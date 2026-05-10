@@ -1,4 +1,5 @@
 add_library(chessmoe_inference
+  src/async_batching_evaluator.cpp
   src/tensor_layout.cpp
   src/tensorrt_engine.cpp
   src/tensorrt_evaluator.cpp

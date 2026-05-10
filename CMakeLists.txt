@@ -16,6 +16,7 @@ add_subdirectory(cuda/batching)
 add_subdirectory(cpp/search)
 add_subdirectory(cpp/selfplay)
 add_subdirectory(cpp/uci)
+add_subdirectory(tools/benchmark)
 add_subdirectory(tools/perft)
 
 if(CHESSMOE_BUILD_TESTS)

@@ -21,3 +21,11 @@ add_executable(arena_config_tests
 target_link_libraries(arena_config_tests PRIVATE chessmoe_selfplay)
 
 add_test(NAME arena_config_tests COMMAND arena_config_tests)
+
+add_executable(gpu_selfplay_pipeline_tests
+  test_gpu_selfplay_pipeline.cpp
+)
+
+target_link_libraries(gpu_selfplay_pipeline_tests PRIVATE chessmoe_selfplay chessmoe_inference)
+
+add_test(NAME gpu_selfplay_pipeline_tests COMMAND gpu_selfplay_pipeline_tests)
