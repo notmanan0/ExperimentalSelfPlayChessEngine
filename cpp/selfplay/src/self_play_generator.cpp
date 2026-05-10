@@ -37,11 +37,25 @@ search::MctsLimits limits_for_config(const SelfPlayConfig& config, int ply) {
   return limits;
 }
 
+search::GumbelSearchLimits gumbel_limits_for_config(const SelfPlayConfig& config,
+                                                    int ply) {
+  search::GumbelSearchLimits limits;
+  limits.simulations = std::max(1, config.search_visits);
+  limits.max_considered_actions = std::max(1, config.gumbel_max_considered_actions);
+  limits.value_scale = config.gumbel_value_scale > 0.0 ? config.gumbel_value_scale : 1.0;
+  limits.deterministic = config.deterministic;
+  limits.seed = config.seed + static_cast<std::uint32_t>(ply * 9973);
+  return limits;
+}
+
 std::vector<VisitEntry> make_visit_distribution(
     const std::vector<search::RootMoveStats>& root_distribution) {
   std::vector<VisitEntry> visits;
   visits.reserve(root_distribution.size());
-  const int total = std::accumulate(
+  const double target_total = std::accumulate(
+      root_distribution.begin(), root_distribution.end(), 0.0,
+      [](double sum, const auto& stat) { return sum + stat.target_probability; });
+  const int visit_total = std::accumulate(
       root_distribution.begin(), root_distribution.end(), 0,
       [](int sum, const auto& stat) { return sum + stat.visit_count; });
 
@@ -49,7 +63,9 @@ std::vector<VisitEntry> make_visit_distribution(
     visits.push_back({
         stat.move,
         stat.visit_count,
-        total > 0 ? static_cast<double>(stat.visit_count) / total : 0.0,
+        target_total > 0.0
+            ? stat.target_probability / target_total
+            : (visit_total > 0 ? static_cast<double>(stat.visit_count) / visit_total : 0.0),
     });
   }
   return visits;
@@ -150,9 +166,15 @@ SelfPlayGame SelfPlayGenerator::generate(const SelfPlayConfig& config) {
       break;
     }
 
-    search::MctsSearcher searcher(evaluator_);
     const auto limits = limits_for_config(config, ply);
-    const auto search_result = searcher.search(position, limits);
+    search::MctsResult search_result;
+    if (config.search_mode == search::SearchMode::Gumbel) {
+      search::GumbelSearcher searcher(evaluator_);
+      search_result = searcher.search(position, gumbel_limits_for_config(config, ply));
+    } else {
+      search::MctsSearcher searcher(evaluator_);
+      search_result = searcher.search(position, limits);
+    }
     if (!search_result.has_best_move) {
       game.result = GameResult::Draw;
       game.terminal_reason = TerminalReason::Stalemate;

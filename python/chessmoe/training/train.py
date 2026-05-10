@@ -10,7 +10,8 @@ from typing import Iterable
 import torch
 from torch.utils.data import DataLoader
 
-from chessmoe.models.tiny_model import TinyChessNet
+from chessmoe.models.dense_transformer import DenseTransformerConfig
+from chessmoe.models.factory import build_model
 from chessmoe.training.checkpoint import (
     load_training_checkpoint,
     save_training_checkpoint,
@@ -67,7 +68,7 @@ def run_training(config: TrainingConfig) -> TrainingResult:
         collate_fn=collate_replay_samples,
     )
 
-    model = TinyChessNet(channels=config.model_channels, hidden=config.model_hidden).to(device)
+    model = _build_configured_model(config).to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=config.learning_rate,
@@ -80,8 +81,10 @@ def run_training(config: TrainingConfig) -> TrainingResult:
     if config.resume_checkpoint is not None:
         restored = load_training_checkpoint(
             config.resume_checkpoint,
+            model_kind=config.model_kind,
             model_channels=config.model_channels,
             model_hidden=config.model_hidden,
+            transformer_config=_transformer_config(config),
             map_location=device,
         )
         model.load_state_dict(restored.model.state_dict())
@@ -210,6 +213,26 @@ def _resolve_device(device: str) -> torch.device:
     if device == "auto":
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     return torch.device(device)
+
+
+def _build_configured_model(config: TrainingConfig) -> torch.nn.Module:
+    return build_model(
+        config.model_kind,
+        tiny_channels=config.model_channels,
+        tiny_hidden=config.model_hidden,
+        transformer_config=_transformer_config(config),
+    )
+
+
+def _transformer_config(config: TrainingConfig) -> DenseTransformerConfig:
+    return DenseTransformerConfig(
+        d_model=config.transformer_d_model,
+        num_layers=config.transformer_layers,
+        num_heads=config.transformer_heads,
+        ffn_dim=config.transformer_ffn_dim,
+        dropout=config.transformer_dropout,
+        uncertainty_head=config.transformer_uncertainty_head,
+    )
 
 
 def _build_scheduler(

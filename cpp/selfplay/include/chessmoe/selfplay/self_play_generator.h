@@ -9,7 +9,9 @@
 #include <chessmoe/chess/move.h>
 #include <chessmoe/chess/position.h>
 #include <chessmoe/eval/evaluator.h>
+#include <chessmoe/search/gumbel_searcher.h>
 #include <chessmoe/search/mcts_searcher.h>
+#include <chessmoe/search/search_mode.h>
 
 namespace chessmoe::selfplay {
 
@@ -41,6 +43,9 @@ struct SelfPlayConfig {
   int search_visits{64};
   int search_max_depth{0};
   double cpuct{1.5};
+  search::SearchMode search_mode{search::SearchMode::Puct};
+  int gumbel_max_considered_actions{16};
+  double gumbel_value_scale{1.0};
   TemperatureSchedule temperature{};
   bool add_root_dirichlet_noise{true};
   double root_dirichlet_alpha{0.3};

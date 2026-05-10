@@ -3,14 +3,14 @@ selfplay:
   max_plies: 256
   search_visits: 64
   search_max_depth: 0
-  search_mode: puct
+  search_mode: gumbel
   cpuct: 1.5
   gumbel_max_considered_actions: 16
   gumbel_value_scale: 1.0
   deterministic: false
   seed: 1
   resignation_enabled: false
-  model_version: tiny-random-bootstrap
+  model_version: dense-transformer-gumbel-bootstrap
 
 temperature:
   initial: 1.0
@@ -18,6 +18,6 @@ temperature:
   cutoff_ply: 30
 
 root_dirichlet_noise:
-  enabled: true
+  enabled: false
   alpha: 0.3
   epsilon: 0.25

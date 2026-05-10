@@ -25,8 +25,15 @@ class TrainingConfig:
     moves_left_weight: float = 0.01
     max_grad_norm: float = 1.0
     scheduler: str = "cosine"
+    model_kind: str = "tiny_cnn"
     model_channels: int = 32
     model_hidden: int = 128
+    transformer_d_model: int = 128
+    transformer_layers: int = 4
+    transformer_heads: int = 8
+    transformer_ffn_dim: int = 512
+    transformer_dropout: float = 0.1
+    transformer_uncertainty_head: bool = False
     resume_checkpoint: str | Path | None = None
 
 

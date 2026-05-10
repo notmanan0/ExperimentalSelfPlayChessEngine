@@ -184,6 +184,7 @@ MctsResult make_result(const MctsNode& root) {
     result.root_distribution.push_back({
         child.move,
         child.prior,
+        0.0,
         child.visit_count,
         child.total_value,
         child.mean_value(),

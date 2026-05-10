@@ -1,0 +1,33 @@
+model:
+  kind: dense_transformer
+  name: dense_transformer_tiny
+  input_shape: [18, 8, 8]
+  square_tokens: 64
+  global_tokens: 1
+  policy_buckets: 20480
+  d_model: 32
+  layers: 1
+  heads: 4
+  ffn_dim: 64
+  dropout: 0.0
+  uncertainty_head: true
+
+training:
+  policy_loss: soft_cross_entropy
+  wdl_loss: cross_entropy
+  moves_left_loss: mse
+  moves_left_weight: 0.01
+
+export:
+  onnx:
+    dynamo: true
+    input_names: [board]
+    output_names: [policy_logits, wdl_logits, moves_left]
+    dynamic_batch: true
+
+inference:
+  legal_policy_masking: outside_or_forward_optional
+  tensorrt_notes:
+    - Use FP32 first.
+    - Keep dense FFN and standard attention ops for ONNX/TensorRT compatibility.
+    - Compare FP16 outputs against FP32 before enabling promotion.

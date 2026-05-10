@@ -7,6 +7,7 @@
 #include <chessmoe/chess/move.h>
 #include <chessmoe/chess/position.h>
 #include <chessmoe/eval/evaluator.h>
+#include <chessmoe/search/search_mode.h>
 
 namespace chessmoe::search {
 
@@ -37,6 +38,7 @@ struct MctsNode {
 struct RootMoveStats {
   chess::Move move{};
   double prior{0.0};
+  double target_probability{0.0};
   int visit_count{0};
   double total_value{0.0};
   double mean_value{0.0};

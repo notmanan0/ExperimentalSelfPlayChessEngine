@@ -6,13 +6,15 @@ from typing import Any
 import torch
 from torch import nn
 
+from chessmoe.models.dense_transformer import DenseTransformerConfig, DenseTransformerEvaluator
+from chessmoe.models.factory import build_model, model_kind as infer_model_kind
 from chessmoe.models.tiny_model import TinyChessNet
 
 
 class TrainingCheckpoint:
     def __init__(
         self,
-        model: TinyChessNet,
+        model: nn.Module,
         optimizer_state: dict[str, Any],
         scheduler_state: dict[str, Any] | None,
         scaler_state: dict[str, Any] | None,
@@ -27,12 +29,15 @@ class TrainingCheckpoint:
         self.metadata = metadata
 
 
-def save_checkpoint(model: TinyChessNet, path: str | Path, **metadata: Any) -> None:
+def save_checkpoint(model: nn.Module, path: str | Path, **metadata: Any) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    kind = infer_model_kind(model)
     torch.save(
         {
-            "model": "TinyChessNet",
+            "model": _checkpoint_model_name(kind),
+            "model_kind": kind,
+            "model_kwargs": _model_kwargs(model),
             "state_dict": model.state_dict(),
             "metadata": metadata,
         },
@@ -40,18 +45,17 @@ def save_checkpoint(model: TinyChessNet, path: str | Path, **metadata: Any) -> N
     )
 
 
-def load_checkpoint(path: str | Path, map_location: str | torch.device = "cpu") -> TinyChessNet:
+def load_checkpoint(path: str | Path, map_location: str | torch.device = "cpu") -> nn.Module:
     checkpoint = torch.load(path, map_location=map_location, weights_only=True)
-    if checkpoint.get("model") != "TinyChessNet":
-        raise ValueError("checkpoint does not contain a TinyChessNet model")
-    model = TinyChessNet()
+    kind = _checkpoint_kind(checkpoint)
+    model = _build_from_checkpoint(kind, checkpoint.get("model_kwargs", {}))
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
     return model
 
 
 def save_training_checkpoint(
-    model: TinyChessNet,
+    model: nn.Module,
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler.LRScheduler | None,
     scaler: torch.amp.GradScaler | None,
@@ -61,13 +65,12 @@ def save_training_checkpoint(
 ) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    kind = infer_model_kind(model)
     torch.save(
         {
-            "model": "TinyChessNet",
-            "model_kwargs": {
-                "channels": _tiny_model_channels(model),
-                "hidden": _tiny_model_hidden(model),
-            },
+            "model": _checkpoint_model_name(kind),
+            "model_kind": kind,
+            "model_kwargs": _model_kwargs(model),
             "state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "scheduler_state_dict": None if scheduler is None else scheduler.state_dict(),
@@ -81,18 +84,20 @@ def save_training_checkpoint(
 
 def load_training_checkpoint(
     path: str | Path,
+    model_kind: str = "tiny_cnn",
     model_channels: int = 32,
     model_hidden: int = 128,
+    transformer_config: DenseTransformerConfig | None = None,
     map_location: str | torch.device = "cpu",
 ) -> TrainingCheckpoint:
     checkpoint = torch.load(path, map_location=map_location, weights_only=True)
-    if checkpoint.get("model") != "TinyChessNet":
-        raise ValueError("checkpoint does not contain a TinyChessNet model")
+    kind = checkpoint.get("model_kind", model_kind)
     model_kwargs = checkpoint.get("model_kwargs", {})
-    model = TinyChessNet(
-        channels=int(model_kwargs.get("channels", model_channels)),
-        hidden=int(model_kwargs.get("hidden", model_hidden)),
-    )
+    if not model_kwargs and kind == "tiny_cnn":
+        model_kwargs = {"channels": model_channels, "hidden": model_hidden}
+    if not model_kwargs and kind == "dense_transformer" and transformer_config is not None:
+        model_kwargs = transformer_config.to_dict()
+    model = _build_from_checkpoint(kind, model_kwargs)
     model.load_state_dict(checkpoint["state_dict"])
     model.to(map_location)
     return TrainingCheckpoint(
@@ -113,3 +118,56 @@ def _tiny_model_channels(model: nn.Module) -> int:
 def _tiny_model_hidden(model: nn.Module) -> int:
     source = model._orig_mod if hasattr(model, "_orig_mod") else model
     return int(source.policy_head.in_features)
+
+
+def _checkpoint_model_name(kind: str) -> str:
+    if kind == "tiny_cnn":
+        return "TinyChessNet"
+    if kind == "dense_transformer":
+        return "DenseTransformerEvaluator"
+    raise ValueError(f"unsupported model kind: {kind}")
+
+
+def _checkpoint_kind(checkpoint: dict[str, Any]) -> str:
+    if "model_kind" in checkpoint:
+        return str(checkpoint["model_kind"])
+    if checkpoint.get("model") == "TinyChessNet":
+        return "tiny_cnn"
+    if checkpoint.get("model") == "DenseTransformerEvaluator":
+        return "dense_transformer"
+    raise ValueError("checkpoint does not contain a supported model")
+
+
+def _model_kwargs(model: nn.Module) -> dict[str, Any]:
+    source = model._orig_mod if hasattr(model, "_orig_mod") else model
+    if isinstance(source, TinyChessNet):
+        return {
+            "channels": _tiny_model_channels(source),
+            "hidden": _tiny_model_hidden(source),
+        }
+    if isinstance(source, DenseTransformerEvaluator):
+        return source.config.to_dict()
+    raise ValueError(f"unsupported model type: {type(source).__name__}")
+
+
+def _build_from_checkpoint(kind: str, model_kwargs: dict[str, Any]) -> nn.Module:
+    if kind == "tiny_cnn":
+        return build_model(
+            "tiny_cnn",
+            tiny_channels=int(model_kwargs.get("channels", 32)),
+            tiny_hidden=int(model_kwargs.get("hidden", 128)),
+        )
+    if kind == "dense_transformer":
+        return build_model(
+            "dense_transformer",
+            transformer_config=DenseTransformerConfig(
+                d_model=int(model_kwargs.get("d_model", 128)),
+                num_layers=int(model_kwargs.get("num_layers", 4)),
+                num_heads=int(model_kwargs.get("num_heads", 8)),
+                ffn_dim=int(model_kwargs.get("ffn_dim", 512)),
+                dropout=float(model_kwargs.get("dropout", 0.1)),
+                layer_norm_eps=float(model_kwargs.get("layer_norm_eps", 1.0e-5)),
+                uncertainty_head=bool(model_kwargs.get("uncertainty_head", False)),
+            ),
+        )
+    raise ValueError(f"unsupported model kind: {kind}")

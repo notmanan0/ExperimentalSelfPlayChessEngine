@@ -2,6 +2,7 @@
 #include <chessmoe/chess/move_generator.h>
 #include <chessmoe/eval/material_evaluator.h>
 #include <chessmoe/selfplay/self_play_generator.h>
+#include <chessmoe/search/search_mode.h>
 
 #include <cstdlib>
 #include <iostream>
@@ -129,6 +130,35 @@ void test_terminal_opening_fen_returns_checkmate_result_without_samples() {
           "terminal reason is checkmate");
 }
 
+void test_gumbel_selfplay_emits_replay_compatible_policy_targets() {
+  chessmoe::eval::MaterialEvaluator batch;
+  chessmoe::eval::SynchronousEvaluator evaluator(batch);
+  chessmoe::selfplay::SelfPlayGenerator generator(evaluator);
+  auto config = short_config();
+  config.search_mode = chessmoe::search::SearchMode::Gumbel;
+  config.max_plies = 1;
+  config.search_visits = 8;
+  config.gumbel_max_considered_actions = 8;
+
+  const auto game = generator.generate(config);
+
+  require(game.samples.size() == 1, "one-ply Gumbel self-play emits one sample");
+  const auto& sample = game.samples.front();
+  require(!sample.visit_distribution.empty(), "Gumbel sample has policy target");
+  double probability_sum = 0.0;
+  int visit_sum = 0;
+  for (const auto& entry : sample.visit_distribution) {
+    probability_sum += entry.probability;
+    visit_sum += entry.visit_count;
+    require(chessmoe::chess::contains_uci(sample.legal_moves, entry.move.to_uci()),
+            "Gumbel replay policy entry is legal");
+  }
+  require(std::abs(probability_sum - 1.0) < 1e-12,
+          "Gumbel replay policy probabilities normalize");
+  require(visit_sum == sample.search_budget,
+          "Gumbel replay synthetic visits sum to budget");
+}
+
 }  // namespace
 
 int main() {
@@ -137,6 +167,7 @@ int main() {
     test_final_result_is_propagated_to_all_samples();
     test_generation_is_deterministic_with_seed();
     test_terminal_opening_fen_returns_checkmate_result_without_samples();
+    test_gumbel_selfplay_emits_replay_compatible_policy_targets();
   } catch (const std::exception& e) {
     std::cerr << "selfplay_tests failed: " << e.what() << '\n';
     return EXIT_FAILURE;

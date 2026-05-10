@@ -1,0 +1,43 @@
+model:
+  name: tiny_cnn
+  input:
+    name: board
+    layout: NCHW
+    shape: [batch, 18, 8, 8]
+    dtype: float32
+  outputs:
+    policy_logits:
+      shape: [batch, 20480]
+      dtype: float32
+    wdl_logits:
+      shape: [batch, 3]
+      dtype: float32
+    moves_left:
+      shape: [batch]
+      dtype: float32
+
+precision:
+  baseline: fp32
+  optional_after_parity_check: fp16
+  fp16_policy_logit_atol: 0.002
+  fp16_wdl_logit_atol: 0.002
+
+match_play:
+  backend: tensorrt
+  min_batch: 1
+  preferred_batch: 4
+  max_batch: 16
+  dynamic_batching: true
+  warmup_iterations: 8
+  cuda_graphs: false
+
+self_play:
+  backend: tensorrt
+  fixed_batch: 64
+  pad_to_fixed_batch: true
+  warmup_iterations: 16
+  cuda_graphs: false
+
+profiling:
+  nvtx_ranges: true
+  benchmark_iterations: 50
