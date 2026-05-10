@@ -1,0 +1,37 @@
+pipeline:
+  total_games: 1024
+  concurrent_games: 128
+  fixed_batch_size: 64
+  max_pending_requests: 4096
+  flush_timeout_ms: 2
+  write_replay: true
+  replay_output_dir: data/replay/phase13
+
+search:
+  mode: puct
+  visits: 64
+  max_depth: 0
+  cpuct: 1.5
+  max_plies: 256
+  add_root_dirichlet_noise: true
+  root_dirichlet_alpha: 0.3
+  root_dirichlet_epsilon: 0.25
+  temperature:
+    initial: 1.0
+    final: 0.0
+    cutoff_ply: 30
+
+inference:
+  use_case: self_play
+  backend: tensorrt
+  precision: fp32
+  cuda_graphs: false
+  profiling:
+    nvtx_ranges: true
+    nsight_systems: true
+    nsight_compute: false
+
+replay:
+  format_version: 1
+  generator_version: 13
+  compressed: false
