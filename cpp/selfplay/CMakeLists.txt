@@ -1,6 +1,7 @@
 add_library(chessmoe_selfplay
   src/arena_config.cpp
   src/gpu_selfplay_pipeline.cpp
+  src/reanalysis_config.cpp
   src/replay_writer.cpp
   src/self_play_generator.cpp
 )

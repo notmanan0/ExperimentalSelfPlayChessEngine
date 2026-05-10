@@ -23,6 +23,7 @@ class TrainingSample:
     policy: torch.Tensor
     wdl: torch.Tensor
     moves_left: torch.Tensor
+    root_value: torch.Tensor | None = None
 
 
 @dataclass(frozen=True)
@@ -34,28 +35,105 @@ class TrainingBatch:
 
 
 class ReplayDataset(Dataset[TrainingSample]):
-    def __init__(self, samples: list[ReplaySample]) -> None:
+    def __init__(
+        self,
+        samples: list[ReplaySample],
+        *,
+        sample_sources: list[Path] | None = None,
+        replay_index: str | Path | None = None,
+        target_policy: str = "original",
+        reanalysis_fraction: float = 0.0,
+        reanalysis_seed: int = 1,
+    ) -> None:
         self._samples = samples
+        self._sample_sources = sample_sources
+        self._replay_index = Path(replay_index) if replay_index is not None else None
+        self._target_policy = str(target_policy)
+        self._reanalysis_fraction = reanalysis_fraction
+        self._reanalysis_seed = reanalysis_seed
         self._moves_left = _moves_left_targets(samples)
+        if self._sample_sources is not None and len(self._sample_sources) != len(samples):
+            raise ValueError("sample_sources length must match samples length")
+        if not 0.0 <= reanalysis_fraction <= 1.0:
+            raise ValueError("reanalysis_fraction must be in [0, 1]")
 
     @classmethod
-    def from_index(cls, db_path: str | Path) -> "ReplayDataset":
+    def from_index(
+        cls,
+        db_path: str | Path,
+        *,
+        target_policy: str = "original",
+        reanalysis_fraction: float = 0.0,
+        reanalysis_seed: int = 1,
+    ) -> "ReplayDataset":
         paths = _chunk_paths_from_index(db_path)
         samples: list[ReplaySample] = []
+        sample_sources: list[Path] = []
         for path in paths:
-            samples.extend(ReplayReader.read_file(path).samples)
-        return cls(samples)
+            chunk_samples = ReplayReader.read_file(path).samples
+            samples.extend(chunk_samples)
+            sample_sources.extend([Path(path)] * len(chunk_samples))
+        return cls(
+            samples,
+            sample_sources=sample_sources,
+            replay_index=db_path,
+            target_policy=target_policy,
+            reanalysis_fraction=reanalysis_fraction,
+            reanalysis_seed=reanalysis_seed,
+        )
 
     def __len__(self) -> int:
         return len(self._samples)
 
     def __getitem__(self, index: int) -> TrainingSample:
         sample = self._samples[index]
+        reanalysis_target = self._target_for_index(index)
+        policy = (
+            policy_target_from_reanalysis(reanalysis_target)
+            if reanalysis_target is not None
+            else policy_target_from_replay(sample)
+        )
+        wdl = (
+            reanalysis_wdl_target(reanalysis_target)
+            if reanalysis_target is not None
+            else wdl_target_from_replay(sample)
+        )
         return TrainingSample(
             features=encode_replay_sample(sample),
-            policy=policy_target_from_replay(sample),
-            wdl=torch.tensor(wdl_target_from_replay(sample), dtype=torch.long),
+            policy=policy,
+            wdl=torch.tensor(wdl, dtype=torch.long),
             moves_left=torch.tensor(self._moves_left[index], dtype=torch.float32),
+            root_value=(
+                torch.tensor(reanalysis_target.root_value, dtype=torch.float32)
+                if reanalysis_target is not None
+                else torch.tensor(sample.root_value, dtype=torch.float32)
+            ),
+        )
+
+    def _target_for_index(self, index: int):
+        policy = self._target_policy
+        if policy == "original":
+            return None
+        if self._replay_index is None or self._sample_sources is None:
+            return None
+
+        sample = self._samples[index]
+        use_reanalysis = policy == "latest_reanalysis"
+        if policy == "mix":
+            rng = random.Random(
+                f"{self._reanalysis_seed}:{self._sample_sources[index]}:{sample.game_id}:{sample.ply_index}"
+            )
+            use_reanalysis = rng.random() < self._reanalysis_fraction
+        if not use_reanalysis:
+            return None
+
+        from replay.reanalysis import load_latest_reanalysis_target
+
+        return load_latest_reanalysis_target(
+            self._replay_index,
+            self._sample_sources[index],
+            game_id=sample.game_id,
+            ply_index=sample.ply_index,
         )
 
 
@@ -66,6 +144,18 @@ def collate_replay_samples(samples: list[TrainingSample]) -> TrainingBatch:
         wdl=torch.stack([sample.wdl for sample in samples]),
         moves_left=torch.stack([sample.moves_left for sample in samples]),
     )
+
+
+def policy_target_from_reanalysis(target) -> torch.Tensor:
+    from replay.reanalysis import reanalysis_policy_target
+
+    return reanalysis_policy_target(target)
+
+
+def reanalysis_wdl_target(target) -> int:
+    from replay.reanalysis import reanalysis_wdl_target as convert
+
+    return convert(target)
 
 
 def split_dataset(

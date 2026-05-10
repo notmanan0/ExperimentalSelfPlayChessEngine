@@ -29,3 +29,11 @@ add_executable(gpu_selfplay_pipeline_tests
 target_link_libraries(gpu_selfplay_pipeline_tests PRIVATE chessmoe_selfplay chessmoe_inference)
 
 add_test(NAME gpu_selfplay_pipeline_tests COMMAND gpu_selfplay_pipeline_tests)
+
+add_executable(reanalysis_config_tests
+  test_reanalysis_config.cpp
+)
+
+target_link_libraries(reanalysis_config_tests PRIVATE chessmoe_selfplay)
+
+add_test(NAME reanalysis_config_tests COMMAND reanalysis_config_tests)

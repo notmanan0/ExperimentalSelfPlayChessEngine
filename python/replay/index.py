@@ -27,6 +27,33 @@ create index if not exists idx_chunks_model_version
 
 create index if not exists idx_chunks_creation_timestamp
   on chunks(creation_timestamp_ms);
+
+create table if not exists chunk_priorities (
+  path text primary key,
+  sampling_priority real not null default 1.0,
+  updated_at_ms integer not null default 0
+);
+
+create table if not exists reanalysis_targets (
+  id integer primary key autoincrement,
+  chunk_path text not null,
+  game_id integer not null,
+  ply_index integer not null,
+  source_model_version integer not null,
+  model_version integer not null,
+  search_budget integer not null,
+  reanalysis_timestamp_ms integer not null,
+  root_value real not null,
+  policy_json text not null,
+  created_at_ms integer not null,
+  unique(chunk_path, game_id, ply_index, model_version, search_budget, reanalysis_timestamp_ms)
+);
+
+create index if not exists idx_reanalysis_targets_sample
+  on reanalysis_targets(chunk_path, game_id, ply_index, reanalysis_timestamp_ms);
+
+create index if not exists idx_reanalysis_targets_model
+  on reanalysis_targets(model_version);
 """
 
 
