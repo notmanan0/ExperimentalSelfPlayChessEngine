@@ -1,0 +1,18 @@
+model:
+  name: tiny_cnn
+  input_shape: [18, 8, 8]
+  policy_buckets: 20480
+  channels: 32
+  hidden: 128
+
+training:
+  policy_loss: soft_cross_entropy
+  wdl_loss: cross_entropy
+  moves_left_loss: mse_placeholder
+  moves_left_weight: 0.01
+
+export:
+  onnx:
+    dynamo: true
+    input_names: [board]
+    output_names: [policy_logits, wdl_logits, moves_left]

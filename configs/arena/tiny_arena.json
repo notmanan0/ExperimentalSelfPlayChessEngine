@@ -1,0 +1,22 @@
+{
+  "candidate_model": "weights/candidate.pt",
+  "best_model": "weights/best.pt",
+  "openings": [
+    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "rnbqkbnr/pppp1ppp/4p3/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq - 0 1"
+  ],
+  "games_per_opening": 2,
+  "search_budget": 64,
+  "seed": 1,
+  "minimum_games": 4,
+  "minimum_score_rate": 0.55,
+  "metadata_path": "data/arena/latest_arena.json",
+  "registry_path": "data/arena/model_registry.json",
+  "sprt": {
+    "enabled": false,
+    "elo0": 0.0,
+    "elo1": 35.0,
+    "alpha": 0.05,
+    "beta": 0.05
+  }
+}

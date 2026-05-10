@@ -1,0 +1,25 @@
+build/
+build-*/
+python-test-output/
+
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+
+# C++/MSVC build artefacts
+*.obj
+*.exe
+*.lib
+*.pdb
+*.ilk
+
+# Generated data/checkpoints
+*.sqlite
+*.pt
