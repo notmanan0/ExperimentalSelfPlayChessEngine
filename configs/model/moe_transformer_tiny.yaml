@@ -1,0 +1,50 @@
+model:
+  kind: moe_transformer
+  name: moe_transformer_tiny
+  input_shape: [18, 8, 8]
+  square_tokens: 64
+  global_tokens: 1
+  policy_buckets: 20480
+  d_model: 32
+  layers: 2
+  heads: 4
+  ffn_dim: 64
+  dropout: 0.0
+  uncertainty_head: true
+  moe_layers: [1]
+  moe:
+    num_experts: 4
+    top_k_training: 2
+    top_k_inference: 1
+    capacity_factor: 1.25
+    load_balance_coeff: 0.01
+    router_entropy_coeff: 0.001
+    router_noise_std: 0.1
+    dense_fallback: false
+    expert_dropout: 0.0
+
+training:
+  policy_loss: soft_cross_entropy
+  wdl_loss: cross_entropy
+  moves_left_loss: mse
+  moves_left_weight: 0.01
+  moe_load_balance_coeff: 0.01
+  moe_router_entropy_coeff: 0.001
+
+export:
+  onnx:
+    dynamo: true
+    input_names: [board]
+    output_names: [policy_logits, wdl_logits, moves_left]
+    dynamic_batch: true
+  tensorrt_notes:
+    - Use FP32 first for routing stability.
+    - Top-k routing is standard ONNX op, supported by TensorRT.
+    - Dynamic scatter/gather in MoE FFN creates data-dependent control flow.
+    - For best TRT compatibility, export with dense_fallback=true.
+    - Compare FP16 outputs against FP32 before enabling promotion.
+
+inference:
+  legal_policy_masking: outside_or_forward_optional
+  top_k: 1
+  capacity_factor: 1.0

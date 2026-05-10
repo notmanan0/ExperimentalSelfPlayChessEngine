@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 import json
@@ -25,6 +25,9 @@ class TrainingConfig:
     moves_left_weight: float = 0.01
     max_grad_norm: float = 1.0
     scheduler: str = "cosine"
+    target_policy: str = "original"
+    reanalysis_fraction: float = 0.0
+    reanalysis_seed: int = 1
     model_kind: str = "tiny_cnn"
     model_channels: int = 32
     model_hidden: int = 128
@@ -35,6 +38,16 @@ class TrainingConfig:
     transformer_dropout: float = 0.1
     transformer_uncertainty_head: bool = False
     resume_checkpoint: str | Path | None = None
+    moe_num_experts: int = 8
+    moe_top_k_training: int = 2
+    moe_top_k_inference: int = 1
+    moe_capacity_factor: float = 1.25
+    moe_load_balance_coeff: float = 0.01
+    moe_router_entropy_coeff: float = 0.001
+    moe_router_noise_std: float = 0.1
+    moe_dense_fallback: bool = False
+    moe_expert_dropout: float = 0.0
+    moe_layers: list[int] = field(default_factory=lambda: [1, 3])
 
 
 def load_training_config(path: str | Path) -> TrainingConfig:

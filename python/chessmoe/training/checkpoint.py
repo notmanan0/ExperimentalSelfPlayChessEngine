@@ -8,6 +8,8 @@ from torch import nn
 
 from chessmoe.models.dense_transformer import DenseTransformerConfig, DenseTransformerEvaluator
 from chessmoe.models.factory import build_model, model_kind as infer_model_kind
+from chessmoe.models.moe_module import MoEConfig
+from chessmoe.models.moe_transformer import MoETransformerConfig, MoETransformerEvaluator
 from chessmoe.models.tiny_model import TinyChessNet
 
 
@@ -88,6 +90,7 @@ def load_training_checkpoint(
     model_channels: int = 32,
     model_hidden: int = 128,
     transformer_config: DenseTransformerConfig | None = None,
+    moe_transformer_config: MoETransformerConfig | None = None,
     map_location: str | torch.device = "cpu",
 ) -> TrainingCheckpoint:
     checkpoint = torch.load(path, map_location=map_location, weights_only=True)
@@ -97,6 +100,8 @@ def load_training_checkpoint(
         model_kwargs = {"channels": model_channels, "hidden": model_hidden}
     if not model_kwargs and kind == "dense_transformer" and transformer_config is not None:
         model_kwargs = transformer_config.to_dict()
+    if not model_kwargs and kind == "moe_transformer" and moe_transformer_config is not None:
+        model_kwargs = moe_transformer_config.to_dict()
     model = _build_from_checkpoint(kind, model_kwargs)
     model.load_state_dict(checkpoint["state_dict"])
     model.to(map_location)
@@ -125,6 +130,8 @@ def _checkpoint_model_name(kind: str) -> str:
         return "TinyChessNet"
     if kind == "dense_transformer":
         return "DenseTransformerEvaluator"
+    if kind == "moe_transformer":
+        return "MoETransformerEvaluator"
     raise ValueError(f"unsupported model kind: {kind}")
 
 
@@ -135,6 +142,8 @@ def _checkpoint_kind(checkpoint: dict[str, Any]) -> str:
         return "tiny_cnn"
     if checkpoint.get("model") == "DenseTransformerEvaluator":
         return "dense_transformer"
+    if checkpoint.get("model") == "MoETransformerEvaluator":
+        return "moe_transformer"
     raise ValueError("checkpoint does not contain a supported model")
 
 
@@ -146,6 +155,8 @@ def _model_kwargs(model: nn.Module) -> dict[str, Any]:
             "hidden": _tiny_model_hidden(source),
         }
     if isinstance(source, DenseTransformerEvaluator):
+        return source.config.to_dict()
+    if isinstance(source, MoETransformerEvaluator):
         return source.config.to_dict()
     raise ValueError(f"unsupported model type: {type(source).__name__}")
 
@@ -168,6 +179,36 @@ def _build_from_checkpoint(kind: str, model_kwargs: dict[str, Any]) -> nn.Module
                 dropout=float(model_kwargs.get("dropout", 0.1)),
                 layer_norm_eps=float(model_kwargs.get("layer_norm_eps", 1.0e-5)),
                 uncertainty_head=bool(model_kwargs.get("uncertainty_head", False)),
+            ),
+        )
+    if kind == "moe_transformer":
+        moe_kwargs = model_kwargs.get("moe", {})
+        moe_config = MoEConfig(
+            num_experts=int(moe_kwargs.get("num_experts", 8)),
+            top_k_training=int(moe_kwargs.get("top_k_training", 2)),
+            top_k_inference=int(moe_kwargs.get("top_k_inference", 1)),
+            capacity_factor=float(moe_kwargs.get("capacity_factor", 1.25)),
+            load_balance_coeff=float(moe_kwargs.get("load_balance_coeff", 0.01)),
+            router_entropy_coeff=float(moe_kwargs.get("router_entropy_coeff", 0.001)),
+            router_noise_std=float(moe_kwargs.get("router_noise_std", 0.1)),
+            dense_fallback=bool(moe_kwargs.get("dense_fallback", False)),
+            expert_dropout=float(moe_kwargs.get("expert_dropout", 0.0)),
+        )
+        moe_layers_raw = model_kwargs.get("moe_layers", [1, 3])
+        moe_layers = tuple(int(x) for x in moe_layers_raw)
+        return build_model(
+            "moe_transformer",
+            moe_transformer_config=MoETransformerConfig(
+                d_model=int(model_kwargs.get("d_model", 128)),
+                num_layers=int(model_kwargs.get("num_layers", 4)),
+                num_heads=int(model_kwargs.get("num_heads", 8)),
+                ffn_dim=int(model_kwargs.get("ffn_dim", 512)),
+                dropout=float(model_kwargs.get("dropout", 0.1)),
+                layer_norm_eps=float(model_kwargs.get("layer_norm_eps", 1.0e-5)),
+                uncertainty_head=bool(model_kwargs.get("uncertainty_head", False)),
+                moe_layers=moe_layers,
+                moe=moe_config,
+                dense_fallback_config=bool(model_kwargs.get("dense_fallback_config", False)),
             ),
         )
     raise ValueError(f"unsupported model kind: {kind}")

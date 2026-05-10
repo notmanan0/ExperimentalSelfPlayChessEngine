@@ -12,6 +12,8 @@ from torch.utils.data import DataLoader
 
 from chessmoe.models.dense_transformer import DenseTransformerConfig
 from chessmoe.models.factory import build_model
+from chessmoe.models.moe_module import MoEConfig
+from chessmoe.models.moe_transformer import MoETransformerConfig
 from chessmoe.training.checkpoint import (
     load_training_checkpoint,
     save_training_checkpoint,
@@ -27,7 +29,7 @@ from chessmoe.training.data import (
     collate_replay_samples,
     split_dataset,
 )
-from chessmoe.training.losses import TinyLossTargets, compute_tiny_loss
+from chessmoe.training.losses import TinyLossTargets, compute_tiny_loss, compute_moe_aware_loss
 
 
 @dataclass(frozen=True)
@@ -42,7 +44,12 @@ def run_training(config: TrainingConfig) -> TrainingResult:
     _set_seed(config.seed)
     device = _resolve_device(config.device)
 
-    dataset = ReplayDataset.from_index(config.replay_index)
+    dataset = ReplayDataset.from_index(
+        config.replay_index,
+        target_policy=config.target_policy,
+        reanalysis_fraction=config.reanalysis_fraction,
+        reanalysis_seed=config.reanalysis_seed,
+    )
     train_data, validation_data = split_dataset(
         dataset,
         train_fraction=config.train_fraction,
@@ -85,6 +92,7 @@ def run_training(config: TrainingConfig) -> TrainingResult:
             model_channels=config.model_channels,
             model_hidden=config.model_hidden,
             transformer_config=_transformer_config(config),
+            moe_transformer_config=_moe_transformer_config(config) if config.model_kind == "moe_transformer" else None,
             map_location=device,
         )
         model.load_state_dict(restored.model.state_dict())
@@ -156,20 +164,34 @@ def _train_one_epoch(
 ) -> dict[str, float]:
     model.train()
     totals = _metric_totals()
+    is_moe = config.model_kind == "moe_transformer"
     for batch in loader:
         batch = _to_device(batch, device)
         optimizer.zero_grad(set_to_none=True)
         with _autocast_context(device, config.amp):
             output = model(batch.features)
-            losses = compute_tiny_loss(
-                output,
-                TinyLossTargets(
-                    policy=batch.policy,
-                    wdl=batch.wdl,
-                    moves_left=batch.moves_left,
-                ),
-                moves_left_weight=config.moves_left_weight,
-            )
+            if is_moe:
+                losses = compute_moe_aware_loss(
+                    output,
+                    TinyLossTargets(
+                        policy=batch.policy,
+                        wdl=batch.wdl,
+                        moves_left=batch.moves_left,
+                    ),
+                    moves_left_weight=config.moves_left_weight,
+                    moe_load_balance_coeff=config.moe_load_balance_coeff,
+                    moe_router_entropy_coeff=config.moe_router_entropy_coeff,
+                )
+            else:
+                losses = compute_tiny_loss(
+                    output,
+                    TinyLossTargets(
+                        policy=batch.policy,
+                        wdl=batch.wdl,
+                        moves_left=batch.moves_left,
+                    ),
+                    moves_left_weight=config.moves_left_weight,
+                )
 
         scaler.scale(losses.total).backward()
         if config.max_grad_norm > 0:
@@ -192,19 +214,33 @@ def _evaluate(
         return {"loss": 0.0, "policy": 0.0, "wdl": 0.0, "moves_left": 0.0}
     model.eval()
     totals = _metric_totals()
+    is_moe = config.model_kind == "moe_transformer"
     for batch in loader:
         batch = _to_device(batch, device)
         with _autocast_context(device, config.amp):
             output = model(batch.features)
-            losses = compute_tiny_loss(
-                output,
-                TinyLossTargets(
-                    policy=batch.policy,
-                    wdl=batch.wdl,
-                    moves_left=batch.moves_left,
-                ),
-                moves_left_weight=config.moves_left_weight,
-            )
+            if is_moe:
+                losses = compute_moe_aware_loss(
+                    output,
+                    TinyLossTargets(
+                        policy=batch.policy,
+                        wdl=batch.wdl,
+                        moves_left=batch.moves_left,
+                    ),
+                    moves_left_weight=config.moves_left_weight,
+                    moe_load_balance_coeff=config.moe_load_balance_coeff,
+                    moe_router_entropy_coeff=config.moe_router_entropy_coeff,
+                )
+            else:
+                losses = compute_tiny_loss(
+                    output,
+                    TinyLossTargets(
+                        policy=batch.policy,
+                        wdl=batch.wdl,
+                        moves_left=batch.moves_left,
+                    ),
+                    moves_left_weight=config.moves_left_weight,
+                )
         _accumulate(totals, losses, batch.features.shape[0])
     return _averages(totals)
 
@@ -216,6 +252,11 @@ def _resolve_device(device: str) -> torch.device:
 
 
 def _build_configured_model(config: TrainingConfig) -> torch.nn.Module:
+    if config.model_kind == "moe_transformer":
+        return build_model(
+            config.model_kind,
+            moe_transformer_config=_moe_transformer_config(config),
+        )
     return build_model(
         config.model_kind,
         tiny_channels=config.model_channels,
@@ -232,6 +273,31 @@ def _transformer_config(config: TrainingConfig) -> DenseTransformerConfig:
         ffn_dim=config.transformer_ffn_dim,
         dropout=config.transformer_dropout,
         uncertainty_head=config.transformer_uncertainty_head,
+    )
+
+
+def _moe_transformer_config(config: TrainingConfig) -> MoETransformerConfig:
+    moe_config = MoEConfig(
+        num_experts=config.moe_num_experts,
+        top_k_training=config.moe_top_k_training,
+        top_k_inference=config.moe_top_k_inference,
+        capacity_factor=config.moe_capacity_factor,
+        load_balance_coeff=config.moe_load_balance_coeff,
+        router_entropy_coeff=config.moe_router_entropy_coeff,
+        router_noise_std=config.moe_router_noise_std,
+        dense_fallback=config.moe_dense_fallback,
+        expert_dropout=config.moe_expert_dropout,
+    )
+    return MoETransformerConfig(
+        d_model=config.transformer_d_model,
+        num_layers=config.transformer_layers,
+        num_heads=config.transformer_heads,
+        ffn_dim=config.transformer_ffn_dim,
+        dropout=config.transformer_dropout,
+        uncertainty_head=config.transformer_uncertainty_head,
+        moe_layers=tuple(config.moe_layers),
+        moe=moe_config,
+        dense_fallback_config=config.moe_dense_fallback,
     )
 
 
