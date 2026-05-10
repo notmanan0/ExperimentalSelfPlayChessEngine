@@ -27,7 +27,7 @@ class _OnnxPolicyValueWrapper(torch.nn.Module):
         return output.policy_logits, output.wdl_logits, output.moves_left
 
 
-def export_tiny_onnx(
+def export_policy_value_onnx(
     model: nn.Module,
     path: str | Path,
     *,
@@ -35,7 +35,7 @@ def export_tiny_onnx(
     dynamic_batch: bool = True,
     opset_version: int | None = None,
 ) -> ExportResult:
-    """Export the tiny baseline network to ONNX with stable tensor names."""
+    """Export a policy/value network to ONNX with stable tensor names."""
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     model.eval()
@@ -75,6 +75,24 @@ def export_tiny_onnx(
         return ExportResult(path=output_path, status="skipped", reason=str(exc))
 
     return ExportResult(path=output_path, status="exported")
+
+
+def export_tiny_onnx(
+    model: nn.Module,
+    path: str | Path,
+    *,
+    verify: bool = False,
+    dynamic_batch: bool = True,
+    opset_version: int | None = None,
+) -> ExportResult:
+    """Export the tiny baseline network to ONNX with stable tensor names."""
+    return export_policy_value_onnx(
+        model,
+        path,
+        verify=verify,
+        dynamic_batch=dynamic_batch,
+        opset_version=opset_version,
+    )
 
 
 def export_onnx_skeleton(

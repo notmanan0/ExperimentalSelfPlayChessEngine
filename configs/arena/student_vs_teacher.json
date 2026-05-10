@@ -1,0 +1,22 @@
+{
+  "candidate_model": "weights/student_hybrid_distilled.pt",
+  "best_model": "weights/moe_transformer.pt",
+  "openings": [
+    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "rnbqkbnr/pppp1ppp/4p3/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq - 0 1"
+  ],
+  "games_per_opening": 2,
+  "search_budget": 64,
+  "seed": 17,
+  "minimum_games": 4,
+  "minimum_score_rate": 0.5,
+  "metadata_path": "data/arena/student_vs_teacher.json",
+  "registry_path": "data/arena/model_registry.json",
+  "sprt": {
+    "enabled": false,
+    "elo0": 0.0,
+    "elo1": 35.0,
+    "alpha": 0.05,
+    "beta": 0.05
+  }
+}

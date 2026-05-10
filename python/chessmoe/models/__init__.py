@@ -9,6 +9,11 @@ from chessmoe.models.moe_transformer import (
     MoETransformerEvaluator,
     MoETransformerOutput,
 )
+from chessmoe.models.student_hybrid import (
+    StudentHybridConfig,
+    StudentHybridEvaluator,
+    StudentHybridOutput,
+)
 from chessmoe.models.tiny_model import TinyChessNet, TinyModelOutput
 
 __all__ = [
@@ -19,6 +24,9 @@ __all__ = [
     "MoETransformerConfig",
     "MoETransformerEvaluator",
     "MoETransformerOutput",
+    "StudentHybridConfig",
+    "StudentHybridEvaluator",
+    "StudentHybridOutput",
     "TinyChessNet",
     "TinyModelOutput",
 ]

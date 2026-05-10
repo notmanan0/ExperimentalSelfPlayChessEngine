@@ -1,0 +1,32 @@
+model:
+  kind: dense_transformer
+  name: student_dense_small
+  input_shape: [18, 8, 8]
+  square_tokens: 64
+  global_tokens: 1
+  policy_buckets: 20480
+  d_model: 64
+  layers: 2
+  heads: 4
+  ffn_dim: 128
+  dropout: 0.05
+  uncertainty_head: false
+
+training:
+  policy_loss: distill_kl
+  wdl_loss: distill_kl
+  value_loss: mse
+  moves_left_loss: mse
+
+export:
+  onnx:
+    dynamo: true
+    input_names: [board]
+    output_names: [policy_logits, wdl_logits, moves_left]
+    dynamic_batch: true
+
+inference:
+  legal_policy_masking: outside_or_forward_optional
+  tensorrt_notes:
+    - Use the latest ONNX opset supported by TensorRT in your stack.
+    - Validate parity against PyTorch before enabling FP16.

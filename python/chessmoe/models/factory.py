@@ -4,6 +4,7 @@ from torch import nn
 
 from chessmoe.models.dense_transformer import DenseTransformerConfig, DenseTransformerEvaluator
 from chessmoe.models.moe_transformer import MoETransformerConfig, MoETransformerEvaluator
+from chessmoe.models.student_hybrid import StudentHybridConfig, StudentHybridEvaluator
 from chessmoe.models.tiny_model import TinyChessNet
 
 
@@ -14,6 +15,7 @@ def build_model(
     tiny_hidden: int = 128,
     transformer_config: DenseTransformerConfig | None = None,
     moe_transformer_config: MoETransformerConfig | None = None,
+    student_hybrid_config: StudentHybridConfig | None = None,
 ) -> nn.Module:
     if kind == "tiny_cnn":
         return TinyChessNet(channels=tiny_channels, hidden=tiny_hidden)
@@ -21,6 +23,8 @@ def build_model(
         return DenseTransformerEvaluator(transformer_config)
     if kind == "moe_transformer":
         return MoETransformerEvaluator(moe_transformer_config)
+    if kind == "student_hybrid":
+        return StudentHybridEvaluator(student_hybrid_config)
     raise ValueError(f"unsupported model kind: {kind}")
 
 
@@ -32,4 +36,6 @@ def model_kind(model: nn.Module) -> str:
         return "dense_transformer"
     if isinstance(source, MoETransformerEvaluator):
         return "moe_transformer"
+    if isinstance(source, StudentHybridEvaluator):
+        return "student_hybrid"
     raise ValueError(f"unsupported model type: {type(source).__name__}")

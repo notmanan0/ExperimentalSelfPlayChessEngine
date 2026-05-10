@@ -10,6 +10,7 @@ from chessmoe.models.dense_transformer import DenseTransformerConfig, DenseTrans
 from chessmoe.models.factory import build_model, model_kind as infer_model_kind
 from chessmoe.models.moe_module import MoEConfig
 from chessmoe.models.moe_transformer import MoETransformerConfig, MoETransformerEvaluator
+from chessmoe.models.student_hybrid import StudentHybridConfig, StudentHybridEvaluator
 from chessmoe.models.tiny_model import TinyChessNet
 
 
@@ -91,6 +92,7 @@ def load_training_checkpoint(
     model_hidden: int = 128,
     transformer_config: DenseTransformerConfig | None = None,
     moe_transformer_config: MoETransformerConfig | None = None,
+    student_hybrid_config: StudentHybridConfig | None = None,
     map_location: str | torch.device = "cpu",
 ) -> TrainingCheckpoint:
     checkpoint = torch.load(path, map_location=map_location, weights_only=True)
@@ -102,6 +104,8 @@ def load_training_checkpoint(
         model_kwargs = transformer_config.to_dict()
     if not model_kwargs and kind == "moe_transformer" and moe_transformer_config is not None:
         model_kwargs = moe_transformer_config.to_dict()
+    if not model_kwargs and kind == "student_hybrid" and student_hybrid_config is not None:
+        model_kwargs = student_hybrid_config.to_dict()
     model = _build_from_checkpoint(kind, model_kwargs)
     model.load_state_dict(checkpoint["state_dict"])
     model.to(map_location)
@@ -132,6 +136,8 @@ def _checkpoint_model_name(kind: str) -> str:
         return "DenseTransformerEvaluator"
     if kind == "moe_transformer":
         return "MoETransformerEvaluator"
+    if kind == "student_hybrid":
+        return "StudentHybridEvaluator"
     raise ValueError(f"unsupported model kind: {kind}")
 
 
@@ -144,6 +150,8 @@ def _checkpoint_kind(checkpoint: dict[str, Any]) -> str:
         return "dense_transformer"
     if checkpoint.get("model") == "MoETransformerEvaluator":
         return "moe_transformer"
+    if checkpoint.get("model") == "StudentHybridEvaluator":
+        return "student_hybrid"
     raise ValueError("checkpoint does not contain a supported model")
 
 
@@ -157,6 +165,8 @@ def _model_kwargs(model: nn.Module) -> dict[str, Any]:
     if isinstance(source, DenseTransformerEvaluator):
         return source.config.to_dict()
     if isinstance(source, MoETransformerEvaluator):
+        return source.config.to_dict()
+    if isinstance(source, StudentHybridEvaluator):
         return source.config.to_dict()
     raise ValueError(f"unsupported model type: {type(source).__name__}")
 
@@ -209,6 +219,19 @@ def _build_from_checkpoint(kind: str, model_kwargs: dict[str, Any]) -> nn.Module
                 moe_layers=moe_layers,
                 moe=moe_config,
                 dense_fallback_config=bool(model_kwargs.get("dense_fallback_config", False)),
+            ),
+        )
+    if kind == "student_hybrid":
+        return build_model(
+            "student_hybrid",
+            student_hybrid_config=StudentHybridConfig(
+                conv_channels=int(model_kwargs.get("conv_channels", 32)),
+                d_model=int(model_kwargs.get("d_model", 96)),
+                num_layers=int(model_kwargs.get("num_layers", 2)),
+                num_heads=int(model_kwargs.get("num_heads", 4)),
+                ffn_dim=int(model_kwargs.get("ffn_dim", 192)),
+                dropout=float(model_kwargs.get("dropout", 0.1)),
+                layer_norm_eps=float(model_kwargs.get("layer_norm_eps", 1.0e-5)),
             ),
         )
     raise ValueError(f"unsupported model kind: {kind}")
