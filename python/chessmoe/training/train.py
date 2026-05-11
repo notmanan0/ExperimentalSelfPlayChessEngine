@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import random
+import time
 from typing import Iterable
 
 import torch
@@ -131,6 +132,15 @@ def run_training(config: TrainingConfig) -> TrainingResult:
         train_losses: list[float] = []
         validation_losses: list[float] = []
 
+        if should_log(dist_context, config.log_all_ranks):
+            print(
+                "training start: "
+                f"epochs={config.epochs} batch_size={config.batch_size} "
+                f"checkpoint={config.checkpoint_path} metrics={metrics_path} "
+                f"device={dist_context.device} amp={config.amp and dist_context.device.type == 'cuda'} "
+                f"model_kind={config.model_kind}"
+            )
+
         for epoch in range(start_epoch, config.epochs):
             if train_sampler is not None:
                 train_sampler.set_epoch(epoch)
@@ -154,6 +164,13 @@ def run_training(config: TrainingConfig) -> TrainingResult:
             validation_losses.append(validation_metrics["loss"])
 
             if should_log(dist_context, config.log_all_ranks):
+                print(
+                    "training epoch complete: "
+                    f"epoch={epoch + 1}/{config.epochs} "
+                    f"train_loss={train_metrics['loss']:.6f} "
+                    f"validation_loss={validation_metrics['loss']:.6f} "
+                    f"checkpoint={config.checkpoint_path} metrics={metrics_path}"
+                )
                 _append_metrics(
                     metrics_path,
                     {
@@ -201,9 +218,12 @@ def _train_one_epoch(
     is_moe = config.model_kind == "moe_transformer"
     accum_steps = _resolve_grad_accum_steps(config.grad_accum_steps)
     num_batches = len(loader)
+    started = time.monotonic()
+    processed_samples = 0
     optimizer.zero_grad(set_to_none=True)
     for step_index, batch in enumerate(loader):
         batch = _to_device(batch, context.device)
+        batch_size = batch.features.shape[0]
         is_last_micro = (step_index + 1) % accum_steps == 0 or (step_index + 1) == num_batches
         with _no_sync_context(model, context.enabled and not is_last_micro):
             with _autocast_context(context.device, config.amp):
@@ -240,7 +260,27 @@ def _train_one_epoch(
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad(set_to_none=True)
-        _accumulate(totals, losses, batch.features.shape[0])
+        _accumulate(totals, losses, batch_size)
+        processed_samples += int(batch_size)
+        if should_log(context, config.log_all_ranks):
+            elapsed = time.monotonic() - started
+            samples_per_second = processed_samples / elapsed if elapsed > 0 else 0.0
+            remaining_batches = max(0, num_batches - (step_index + 1))
+            eta = (
+                remaining_batches * elapsed / (step_index + 1)
+                if step_index + 1 > 0
+                else 0.0
+            )
+            print(
+                "training progress: "
+                f"batch={step_index + 1}/{num_batches} "
+                f"train_loss={float(losses.total.detach().cpu()):.6f} "
+                f"samples/sec={samples_per_second:.2f} "
+                f"elapsed={elapsed:.1f}s ETA={eta:.1f}s "
+                f"checkpoint={config.checkpoint_path} metrics={config.metrics_path} "
+                f"device={context.device} amp={config.amp and context.device.type == 'cuda'} "
+                f"model_kind={config.model_kind}"
+            )
     totals = reduce_metric_totals(totals, context)
     return _averages(totals)
 
@@ -298,7 +338,7 @@ def _build_loader(
     sampler = None
     generator = torch.Generator()
     generator.manual_seed(config.seed)
-    if context.enabled:
+    if context.enabled and context.world_size > 1:
         sampler = DistributedSampler(
             dataset,
             num_replicas=context.world_size,

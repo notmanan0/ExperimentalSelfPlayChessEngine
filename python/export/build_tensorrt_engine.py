@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import time
 
 
 def parse_shape(text: str) -> tuple[int, int, int, int]:
@@ -29,10 +30,20 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    started = time.monotonic()
+    precision = "fp16" if args.fp16 else "fp32"
+    workspace_bytes = args.workspace_mib * 1024 * 1024
+    print(
+        "tensorrt build start: "
+        f"onnx={args.onnx} engine={args.engine} min_shape={args.min_shape} "
+        f"opt_shape={args.opt_shape} max_shape={args.max_shape} "
+        f"precision={precision} workspace_bytes={workspace_bytes}"
+    )
     try:
         import tensorrt as trt
     except Exception as exc:
-        print(f"TensorRT Python package is not available: {exc}")
+        elapsed = time.monotonic() - started
+        print(f"tensorrt build skipped: reason=package unavailable detail={exc} elapsed={elapsed:.1f}s")
         return 2
 
     logger = trt.Logger(trt.Logger.INFO)
@@ -59,12 +70,14 @@ def main() -> int:
 
     serialized = builder.build_serialized_network(network, config)
     if serialized is None:
-        print("TensorRT failed to build a serialized engine")
+        elapsed = time.monotonic() - started
+        print(f"tensorrt build failed: reason=serialized engine is None elapsed={elapsed:.1f}s")
         return 1
 
     args.engine.parent.mkdir(parents=True, exist_ok=True)
     args.engine.write_bytes(bytes(serialized))
-    print(f"Built TensorRT engine: {args.engine}")
+    elapsed = time.monotonic() - started
+    print(f"tensorrt build complete: engine={args.engine} elapsed={elapsed:.1f}s")
     return 0
 
 

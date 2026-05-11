@@ -38,11 +38,13 @@ std::filesystem::path replay_path_for_game(const std::filesystem::path& output_d
 
 GpuSelfPlayMetrics make_metrics(
     int games_completed,
+    std::uint64_t samples_written,
     double elapsed_ms,
     const inference::AsyncBatchingMetrics& inference_metrics,
     std::optional<double> sampled_gpu_utilization_percent) {
   GpuSelfPlayMetrics metrics;
   metrics.games_completed = static_cast<std::uint64_t>(games_completed);
+  metrics.samples_written = samples_written;
   metrics.positions_evaluated = inference_metrics.positions_evaluated;
   metrics.batches_evaluated = inference_metrics.batches_evaluated;
   metrics.padded_positions = inference_metrics.padded_positions;
@@ -95,6 +97,7 @@ GpuSelfPlayRunResult GpuSelfPlayPipeline::run(
 
   std::atomic<int> next_game{0};
   std::atomic<int> completed_games{0};
+  std::atomic<std::uint64_t> samples_written{0};
   std::mutex exception_mutex;
   std::exception_ptr first_exception;
   const auto started = std::chrono::steady_clock::now();
@@ -119,6 +122,8 @@ GpuSelfPlayRunResult GpuSelfPlayPipeline::run(
           game_config.seed =
               config.game.seed + static_cast<std::uint32_t>(game_id);
           auto game = generator.generate(game_config);
+          const auto game_samples =
+              static_cast<std::uint64_t>(game.samples.size());
 
           if (config.write_replay) {
             auto options = config.replay_options;
@@ -131,7 +136,27 @@ GpuSelfPlayRunResult GpuSelfPlayPipeline::run(
           }
 
           result.games[static_cast<std::size_t>(game_id)] = std::move(game);
-          completed_games.fetch_add(1);
+          const auto now_samples =
+              samples_written.fetch_add(game_samples) + game_samples;
+          const int now_completed = completed_games.fetch_add(1) + 1;
+          if (config.progress_callback && config.progress_interval > 0 &&
+              (now_completed == config.total_games ||
+               now_completed % config.progress_interval == 0)) {
+            const auto current = std::chrono::steady_clock::now();
+            const auto inference_metrics = async_evaluator.metrics_snapshot();
+            config.progress_callback(GpuSelfPlayProgress{
+                now_completed,
+                config.total_games,
+                now_samples,
+                inference_metrics.positions_evaluated,
+                inference_metrics.batches_evaluated,
+                inference_metrics.padded_positions,
+                std::chrono::duration<double, std::milli>(current - started)
+                    .count(),
+                inference_metrics.average_inference_latency_ms(),
+                thread_count,
+            });
+          }
         }
       } catch (...) {
         std::lock_guard lock(exception_mutex);
@@ -152,7 +177,7 @@ GpuSelfPlayRunResult GpuSelfPlayPipeline::run(
 
   const auto stopped = std::chrono::steady_clock::now();
   result.metrics = make_metrics(
-      completed_games.load(),
+      completed_games.load(), samples_written.load(),
       std::chrono::duration<double, std::milli>(stopped - started).count(),
       async_evaluator.metrics_snapshot(), config.sampled_gpu_utilization_percent);
 

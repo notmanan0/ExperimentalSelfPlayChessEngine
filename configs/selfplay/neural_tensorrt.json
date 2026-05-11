@@ -1,0 +1,14 @@
+{
+  "evaluator": "tensorrt",
+  "engine": "weights/dense_bootstrap.engine",
+  "games": 2048,
+  "concurrent_games": 128,
+  "fixed_batch": 64,
+  "visits": 128,
+  "max_plies": 160,
+  "write_replay": true,
+  "output_dir": "data/replay/phase14",
+  "model_version": 1,
+  "generator_version": 14,
+  "progress_interval": 25
+}

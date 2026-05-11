@@ -1,0 +1,22 @@
+{
+  "replay_index": "data/replay/replay.sqlite",
+  "checkpoint_path": "weights/dense_bootstrap.pt",
+  "metrics_path": "data/training/dense_bootstrap_metrics.jsonl",
+  "epochs": 5,
+  "batch_size": 32,
+  "learning_rate": 0.001,
+  "weight_decay": 0.0001,
+  "train_fraction": 0.9,
+  "validation_fraction": 0.1,
+  "seed": 1,
+  "device": "auto",
+  "amp": false,
+  "compile_model": false,
+  "deterministic": true,
+  "model_kind": "dense_transformer",
+  "transformer_d_model": 128,
+  "transformer_layers": 4,
+  "transformer_heads": 8,
+  "transformer_ffn_dim": 512,
+  "transformer_dropout": 0.0
+}

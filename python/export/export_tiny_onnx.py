@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import time
 
 import torch
 
@@ -28,6 +29,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    started = time.monotonic()
+    print(
+        "onnx export start: "
+        f"checkpoint={args.checkpoint} model_kind={args.model_kind} "
+        f"output={args.output} dynamic_batch={not args.static_batch} "
+        f"opset={args.opset if args.opset is not None else 'default'}"
+    )
     model = (
         load_checkpoint(args.checkpoint)
         if args.checkpoint
@@ -49,11 +57,16 @@ def main() -> int:
             verify=args.verify,
             dynamic_batch=not args.static_batch,
             opset_version=args.opset,
-        )
+    )
     if result.status != "exported":
-        print(f"ONNX export skipped: {result.reason}")
+        elapsed = time.monotonic() - started
+        print(f"onnx export skipped: reason={result.reason} elapsed={elapsed:.1f}s")
         return 2
-    print(f"Exported ONNX model: {result.path}")
+    elapsed = time.monotonic() - started
+    print(
+        "onnx export complete: "
+        f"path={result.path} verification={args.verify} elapsed={elapsed:.1f}s"
+    )
     return 0
 
 

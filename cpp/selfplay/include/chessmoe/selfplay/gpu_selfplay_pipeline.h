@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -13,6 +14,18 @@
 #include <chessmoe/selfplay/self_play_generator.h>
 
 namespace chessmoe::selfplay {
+
+struct GpuSelfPlayProgress {
+  int completed_games{0};
+  int total_games{0};
+  std::uint64_t samples_written{0};
+  std::uint64_t positions_evaluated{0};
+  std::uint64_t batches_evaluated{0};
+  std::uint64_t padded_positions{0};
+  double elapsed_ms{0.0};
+  double average_inference_latency_ms{0.0};
+  int active_games{0};
+};
 
 struct GpuSelfPlayPipelineConfig {
   SelfPlayConfig game{};
@@ -25,10 +38,13 @@ struct GpuSelfPlayPipelineConfig {
   std::filesystem::path replay_output_dir{"data/replay"};
   ReplayChunkOptions replay_options{};
   std::optional<double> sampled_gpu_utilization_percent{};
+  int progress_interval{0};
+  std::function<void(const GpuSelfPlayProgress&)> progress_callback{};
 };
 
 struct GpuSelfPlayMetrics {
   std::uint64_t games_completed{0};
+  std::uint64_t samples_written{0};
   std::uint64_t positions_evaluated{0};
   std::uint64_t batches_evaluated{0};
   std::uint64_t padded_positions{0};

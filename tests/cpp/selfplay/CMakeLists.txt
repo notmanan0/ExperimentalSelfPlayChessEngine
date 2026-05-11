@@ -30,6 +30,14 @@ target_link_libraries(gpu_selfplay_pipeline_tests PRIVATE chessmoe_selfplay ches
 
 add_test(NAME gpu_selfplay_pipeline_tests COMMAND gpu_selfplay_pipeline_tests)
 
+add_executable(selfplay_app_tests
+  test_selfplay_app.cpp
+)
+
+target_link_libraries(selfplay_app_tests PRIVATE chessmoe_selfplay)
+
+add_test(NAME selfplay_app_tests COMMAND selfplay_app_tests)
+
 add_executable(reanalysis_config_tests
   test_reanalysis_config.cpp
 )

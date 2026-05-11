@@ -1,6 +1,6 @@
 # Phase 10: CUDA/TensorRT Batched Inference
 
-Checked against current official documentation on 2026-05-10.
+Checked against current official documentation on 2026-05-11.
 
 Sources:
 
@@ -47,13 +47,13 @@ The current implementation keeps policy legality outside TensorRT: the network r
 - `TensorRTEvaluator`: `IBatchEvaluator` adapter that encodes positions, invokes a backend, converts WDL logits to probabilities/value, maps legal moves to dense policy buckets, and applies legal masking.
 - `BatchPlanner`: match-play dynamic batching and self-play fixed padded batching policy.
 - `CudaStreamView`: opaque CUDA stream handle view for future TensorRT or ONNX Runtime user-stream ownership without requiring CUDA headers in CPU-only builds.
-- `TensorRTEngineConfig`: placeholder for engine path, max batch, precision, warmup, profiling, device ID, and CUDA Graphs toggle.
+- `TensorRTEngineConfig`: engine path, max batch, precision, warmup, profiling, device ID, and CUDA Graphs toggle.
 
 ## Main Algorithms
 
 1. Encode each `Position` into the same `[18, 8, 8]` NCHW layout as the Python tiny model.
 2. Concatenate positions into a contiguous FP32 batch.
-3. Run backend inference on the batch.
+3. Run backend inference on the batch. When `CHESSMOE_ENABLE_TENSORRT=ON`, the C++ runtime path deserializes the engine, creates an execution context, selects optimization profile 0, sets the `[N, 18, 8, 8]` input shape, binds named tensors, enqueues inference, and copies dense outputs back to host memory.
 4. Validate output tensor sizes against `TensorLayout`.
 5. Convert WDL logits with softmax and scalar value as `$P(win) - P(loss)$`.
 6. For each legal move, compute its dense policy bucket using the Python-compatible UCI mapping.
@@ -92,6 +92,23 @@ python python/export/build_tensorrt_engine.py --onnx artifacts/tiny.onnx --engin
 python tools/benchmark/benchmark_inference.py --onnx artifacts/tiny.onnx --provider tensorrt --batch-size 8
 ```
 
+Production self-play uses the `selfplay` executable rather than the benchmark target:
+
+```powershell
+.\build-nmake\bin\selfplay.exe `
+  --evaluator tensorrt `
+  --engine weights\dense_bootstrap.engine `
+  --games 2048 `
+  --concurrent-games 128 `
+  --fixed-batch 64 `
+  --visits 128 `
+  --max-plies 160 `
+  --write-replay `
+  --output-dir data\replay\phase14 `
+  --model-version 1 `
+  --progress-interval 25
+```
+
 ## Completion Criteria
 
 - ONNX export works for the tiny baseline with stable tensor names.
@@ -100,7 +117,11 @@ python tools/benchmark/benchmark_inference.py --onnx artifacts/tiny.onnx --provi
 - Match play and self-play have distinct batching policies.
 - FP32 is the default path.
 - FP16 is configuration-only until parity checks pass.
-- CUDA stream ownership is documented for the TensorRT/ORT path, but the local C++ wrapper does not claim a stream until TensorRT linkage is completed.
+- TensorRT engine-build tooling accepts explicit min/opt/max profile shapes.
+- The C++ TensorRT wrapper fails clearly when TensorRT support is not compiled in.
+- Runtime evaluator selection is explicit: `material`, `tensorrt`, or `onnx`.
+- `tensorrt` requires an engine path and never silently falls back to material evaluation.
+- `onnx` reports unavailable until a real C++ ONNX Runtime backend is implemented.
 - Warmup and benchmark hooks exist.
 - CUDA Graphs are off.
 - Tests cover tensor shapes, policy mapping, batching behavior, legal masking, and PyTorch/ONNX parity where dependencies are installed.
@@ -117,4 +138,4 @@ python tools/benchmark/benchmark_inference.py --onnx artifacts/tiny.onnx --provi
 
 ## Next Step
 
-Wire real TensorRT C++ runtime objects behind `TensorRTEngine` or use the ONNX Runtime TensorRT Execution Provider as the first production path, then run FP32 parity and benchmark reports before enabling FP16.
+Build with `CHESSMOE_ENABLE_TENSORRT=ON`, run a small TensorRT self-play batch against a known engine, compare dense outputs against the PyTorch/ONNX path, then run FP32 benchmark reports before enabling FP16.

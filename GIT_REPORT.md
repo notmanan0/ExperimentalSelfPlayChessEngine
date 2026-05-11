@@ -1,37 +1,29 @@
 # Git Report
 
-Generated: 2026-05-10
+Generated: 2026-05-11
 
 ## Repository State
 
 - Branch: `master`
-- Commit history: no commits yet
-- Working tree: files are untracked
+- Working tree: active development for the user-facing AlphaZero generation pipeline.
+- Generated metrics such as `*.jsonl` are ignored rather than committed.
 
-## Current Changes
+## Current Focus
 
-| Path | Status | Notes |
-| - | - | - |
-| `AGENTS.md` | Untracked | Project guide for `chessmoe` phase rules, roadmap, constraints, and testing standards |
-| `GIT_REPORT.md` | Untracked | This report |
+- Preflight determinism cleanup for one-rank DDP training.
+- User-facing `selfplay` executable and evaluator selection.
+- Replay indexing and summary tools.
+- Pipeline cleanup, orchestration, and guarded promotion tooling.
 
-## Latest Commit
-
-No commits exist on this branch yet.
-
-## Summary
-
-The repository has been initialized with Git but has not had an initial commit. The project currently contains the `chessmoe` guidance file and this Git report.
-
-## Suggested Next Commands
+## Verification Commands
 
 ```powershell
-git status --short --branch
-git add AGENTS.md GIT_REPORT.md
-git commit -m "Initialize chessmoe project guidance"
+ctest --test-dir build-nmake --output-on-failure
+python -m pytest tests/python --basetemp python-test-output/pytest-current
 ```
 
-## Next Step
+## Notes
 
-Start Phase 0 by creating the repository skeleton, CMake build files, minimal C++ target, and smoke tests.
-
+- `gpu_selfplay_benchmark` remains a compatibility benchmark.
+- `selfplay` is the intended production self-play command.
+- TensorRT remains optional at build time; selecting it without compiled support must fail clearly.

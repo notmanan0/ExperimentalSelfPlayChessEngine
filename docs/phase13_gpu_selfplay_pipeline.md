@@ -24,11 +24,23 @@ This phase does not move MCTS traversal, node storage, tree backup, move generat
 - `cpp/inference/src/async_batching_evaluator.cpp`
 - `cpp/selfplay/include/chessmoe/selfplay/gpu_selfplay_pipeline.h`
 - `cpp/selfplay/src/gpu_selfplay_pipeline.cpp`
+- `cpp/selfplay/include/chessmoe/selfplay/selfplay_app.h`
+- `cpp/selfplay/src/selfplay_app.cpp`
+- `cpp/selfplay/src/selfplay_main.cpp`
 - `tools/benchmark/CMakeLists.txt`
 - `tools/benchmark/gpu_selfplay_benchmark.cpp`
+- `tools/convert/index_replay_dir.py`
+- `tools/convert/summarize_replay.py`
+- `tools/clean.py`
+- `tools/run_pipeline.py`
+- `configs/selfplay/bootstrap_material.json`
+- `configs/selfplay/neural_tensorrt.json`
 - `configs/selfplay/gpu_selfplay_phase13.yaml`
 - `tests/cpp/selfplay/test_gpu_selfplay_pipeline.cpp`
+- `tests/cpp/selfplay/test_selfplay_app.cpp`
+- `tests/python/test_pipeline_tools.py`
 - `docs/phase13_gpu_selfplay_pipeline.md`
+- `docs/generation_pipeline.md`
 
 Files updated:
 
@@ -62,7 +74,16 @@ Files updated:
   - Writes replay chunks per completed game when enabled.
 
 - `selfplay::GpuSelfPlayMetrics`
-  - Reports positions/sec, games/hour, GPU utilisation placeholder/sample, batch size distribution, average inference latency, completed games, evaluated positions, padded positions, and max queue depth.
+  - Reports samples written, positions/sec, games/hour, GPU utilisation placeholder/sample, batch size distribution, average inference latency, completed games, evaluated positions, padded positions, and max queue depth.
+
+- `selfplay::SelfPlayAppOptions`
+  - User-facing options for evaluator mode, TensorRT engine path, pipeline config, and progress interval.
+
+- `selfplay::EvaluatorMode`
+  - Runtime evaluator selection: `material`, `tensorrt`, or `onnx`.
+  - `material` uses the bootstrap evaluator.
+  - `tensorrt` requires an engine path and never silently falls back.
+  - `onnx` reports unavailable until a real C++ ONNX Runtime backend exists.
 
 ## Main Algorithms
 
@@ -187,16 +208,41 @@ ncu --set full --target-processes all build-nmake\tools\benchmark\gpu_selfplay_b
 
 The local benchmark target uses the available `IBatchEvaluator` path. In production, run the same pipeline with the TensorRT-backed batch evaluator so the reported inference latency and GPU utilisation reflect real GPU inference.
 
+## Production Self-Play Command
+
+`selfplay` is the production self-play executable. It emits a start banner, periodic progress, clear failures, and a final summary.
+
+Bootstrap material replay:
+
+```powershell
+.\build-nmake\bin\selfplay.exe `
+  --config configs\selfplay\bootstrap_material.json
+```
+
+TensorRT neural replay:
+
+```powershell
+.\build-nmake\bin\selfplay.exe `
+  --config configs\selfplay\neural_tensorrt.json `
+  --engine weights\dense_bootstrap.engine
+```
+
+Progress includes completed games, total games, percentage, samples written, games/sec, samples/sec, elapsed time, ETA, average plies/game, active games, output directory, evaluator mode, model version, batches evaluated, padded positions, and average inference latency.
+
 ## Completion Criteria
 
 - Multiple concurrent self-play games run through a shared evaluator boundary.
+- A production `selfplay` executable exists under `build-nmake\bin`.
+- Runtime evaluator mode selection is available without C++ edits after build.
 - Inference requests are queued and bounded.
 - Backpressure blocks producers when `max_pending_requests` is reached.
 - Self-play inference batches are fixed-size and padded on timeout flush.
 - Per-game MCTS state remains CPU-side.
 - The batch evaluator contract remains backend-agnostic and TensorRT-compatible.
 - Replay chunks are written after completed games.
-- Metrics include positions/sec, games/hour, GPU utilisation sample field, batch-size distribution, and inference latency.
+- Metrics include samples written, positions/sec, games/hour, GPU utilisation sample field, batch-size distribution, and inference latency.
+- Replay indexing and summary tools provide user-readable progress and final summaries.
+- Pipeline and promotion tooling preserve best-model history and stop on failure.
 - Profiling hooks and commands are documented.
 - CUDA Graphs remain an optional fixed-shape experiment after baseline measurement.
 - No reanalysis implementation is added.
@@ -215,4 +261,4 @@ The local benchmark target uses the available `IBatchEvaluator` path. In product
 
 ## Next Step
 
-Run Phase 13 with a real TensorRT-backed evaluator, collect a baseline Nsight Systems trace and throughput report, then decide whether fixed-shape CUDA Graph replay is worth testing for the inference worker. Reanalysis remains out of scope.
+Run Phase 13 with a real TensorRT-backed evaluator through `selfplay`, collect a baseline Nsight Systems trace and throughput report, then decide whether fixed-shape CUDA Graph replay is worth testing for the inference worker. Reanalysis remains out of scope.

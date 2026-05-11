@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <memory>
 #include <string>
 
 #include <chessmoe/inference/tensorrt_evaluator.h>
@@ -22,12 +23,20 @@ struct TensorRTEngineConfig {
 class TensorRTEngine final : public IInferenceBackend {
  public:
   explicit TensorRTEngine(TensorRTEngineConfig config);
+  ~TensorRTEngine() override;
+
+  TensorRTEngine(const TensorRTEngine&) = delete;
+  TensorRTEngine& operator=(const TensorRTEngine&) = delete;
+  TensorRTEngine(TensorRTEngine&&) noexcept;
+  TensorRTEngine& operator=(TensorRTEngine&&) noexcept;
 
   [[nodiscard]] TensorLayout layout() const override;
   RawNetworkOutput infer(const NetworkInputBatch& batch) override;
 
  private:
+  struct Impl;
   TensorRTEngineConfig config_;
+  std::unique_ptr<Impl> impl_;
 };
 
 [[nodiscard]] std::string tensorrt_build_status();

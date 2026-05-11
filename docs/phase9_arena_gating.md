@@ -2,7 +2,7 @@
 
 ## Objective
 
-Compare a candidate model against the current best model before promotion. The phase adds deterministic arena scheduling, result tracking, threshold-based promotion, a model registry, metadata logging, and a CLI. CUDA inference is not implemented.
+Compare a candidate model against the current best model before promotion. The phase adds deterministic arena scheduling, result tracking, threshold-based promotion, a model registry, metadata logging, and a CLI. The current Python arena backend is placeholder-seeded; it is useful for validating scheduling and metadata plumbing, but it must not produce meaningful promotion decisions.
 
 ## Files To Create
 
@@ -39,6 +39,18 @@ $$
 6. Apply the promotion rule: insufficient games blocks promotion, optional SPRT returns a continuation skeleton, otherwise score threshold promotes or rejects.
 7. Write metadata JSON with config, results, summary, decision, and C++/Python boundary notes.
 8. Update the model registry by moving the candidate to `promoted` and `best`, or to `rejected`.
+
+## Current Production Status
+
+The existing arena flow is not yet a real model-vs-model search match runner. User-facing pipeline commands therefore refuse meaningful promotion from arena results until the backend plays actual candidate-vs-baseline search games with real evaluator outputs.
+
+Controlled promotion is still available for manually accepted artifacts:
+
+```powershell
+python tools/run_pipeline.py promote --candidate weights/candidate.engine --version 2
+```
+
+Promotion preserves the previous best under `weights/history/model_000001.*` style paths before writing `weights/best.*`.
 
 ## Arena Pseudocode
 
@@ -85,6 +97,7 @@ ctest --test-dir build-nmake --output-on-failure
 - Promotion thresholds promote or reject correctly.
 - Registry and metadata files are written.
 - C++ boundary tests pass.
+- Placeholder arena status is explicit and cannot silently gate production promotion.
 
 ## Common Failure Modes
 
@@ -94,7 +107,8 @@ ctest --test-dir build-nmake --output-on-failure
 - Updating the best model without preserving rejected/promoted history.
 - Treating the Elo and confidence interval placeholders as statistically complete.
 - Running arena games with nondeterministic seeds.
+- Treating placeholder-seeded arena results as model strength evidence.
 
 ## Next Step
 
-Phase 10 should add match-play inference backend selection and parity checks against the PyTorch baseline before CUDA-specific inference work.
+Replace the placeholder arena backend with real model-vs-model search games using explicit evaluator backends and equal search budgets before enabling arena-driven promotion.

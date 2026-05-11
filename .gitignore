@@ -1,10 +1,12 @@
+# Build outputs
 build/
 build-*/
-python-test-output/
 
+# Python test/cache outputs
+python-test-output/
 .pytest_cache/
 __pycache__/
-*.pyc
+*.py[cod]
 
 # CMake generated files
 CMakeCache.txt
@@ -13,13 +15,24 @@ cmake_install.cmake
 CTestTestfile.cmake
 Makefile
 
-# C++/MSVC build artefacts
+# C++/MSVC build artifacts
 *.obj
 *.exe
 *.lib
 *.pdb
 *.ilk
 
-# Generated data/checkpoints
+# Generated databases, metrics, replay, and model artifacts
 *.sqlite
+*.jsonl
+*.cmrep
 *.pt
+*.onnx
+*.onnx.data
+*.engine
+
+# Keep placeholder directories and source-controlled docs/configs visible
+!.gitkeep
+!docs/**/*.md
+!configs/**/*.json
+!configs/**/*.yaml
