@@ -54,6 +54,8 @@ struct SelfPlayConfig {
   bool deterministic{false};
   std::uint32_t seed{1};
   std::string model_version{"unknown"};
+  bool opening_color_swapped{false};
+  std::uint32_t model_version_num{0};
 };
 
 struct VisitEntry {

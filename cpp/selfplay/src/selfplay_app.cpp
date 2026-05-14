@@ -246,6 +246,17 @@ std::unique_ptr<eval::IBatchEvaluator> create_batch_evaluator(
   throw std::runtime_error("unsupported evaluator mode");
 }
 
+std::unique_ptr<eval::IBatchEvaluator> create_batch_evaluator_from_mode(
+    EvaluatorMode mode,
+    const std::optional<std::filesystem::path>& engine_path,
+    std::size_t fixed_batch) {
+  SelfPlayAppOptions opts;
+  opts.evaluator_mode = mode;
+  opts.engine_path = engine_path;
+  opts.pipeline.fixed_batch_size = fixed_batch;
+  return create_batch_evaluator(opts);
+}
+
 std::string evaluator_mode_name(EvaluatorMode mode) {
   switch (mode) {
     case EvaluatorMode::Material:

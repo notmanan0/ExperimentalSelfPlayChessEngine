@@ -42,6 +42,10 @@ struct ProgressSnapshot {
 [[nodiscard]] SelfPlayAppOptions parse_selfplay_options(int argc, char** argv);
 [[nodiscard]] std::unique_ptr<eval::IBatchEvaluator> create_batch_evaluator(
     const SelfPlayAppOptions& options);
+[[nodiscard]] std::unique_ptr<eval::IBatchEvaluator> create_batch_evaluator_from_mode(
+    EvaluatorMode mode,
+    const std::optional<std::filesystem::path>& engine_path,
+    std::size_t fixed_batch);
 [[nodiscard]] std::string evaluator_mode_name(EvaluatorMode mode);
 [[nodiscard]] std::string format_progress(const ProgressSnapshot& snapshot);
 

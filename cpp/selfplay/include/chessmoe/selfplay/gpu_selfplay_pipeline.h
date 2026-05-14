@@ -40,6 +40,7 @@ struct GpuSelfPlayPipelineConfig {
   std::optional<double> sampled_gpu_utilization_percent{};
   int progress_interval{0};
   std::function<void(const GpuSelfPlayProgress&)> progress_callback{};
+  std::vector<std::string> opening_fen_pool;
 };
 
 struct GpuSelfPlayMetrics {
@@ -56,6 +57,17 @@ struct GpuSelfPlayMetrics {
   double average_inference_latency_ms{0.0};
   std::vector<std::uint64_t> batch_size_histogram;
   std::vector<std::uint64_t> valid_batch_size_histogram;
+
+  // Phase 18 metrics
+  std::uint64_t checkmate_count{0};
+  std::uint64_t stalemate_count{0};
+  std::uint64_t repetition_count{0};
+  std::uint64_t fifty_move_count{0};
+  std::uint64_t max_plies_count{0};
+  double samples_per_second{0.0};
+  double average_plies_per_game{0.0};
+  double batch_fill_ratio{0.0};
+  double padding_ratio{0.0};
 };
 
 struct GpuSelfPlayRunResult {

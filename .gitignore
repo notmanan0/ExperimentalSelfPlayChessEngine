@@ -31,6 +31,10 @@ Makefile
 *.onnx.data
 *.engine
 
+# Generated run output and calibration data
+runs/
+data/calibration/
+
 # Keep placeholder directories and source-controlled docs/configs visible
 !.gitkeep
 !docs/**/*.md

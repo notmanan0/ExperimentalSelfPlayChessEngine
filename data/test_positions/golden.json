@@ -1,0 +1,103 @@
+{
+  "positions": [
+    {
+      "name": "mate_in_1_queen",
+      "fen": "r1bqkbnr/pppp1ppp/2n5/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 0 1",
+      "best_move": "h5f7",
+      "category": "mate_in_1",
+      "description": "Scholar's mate: Qxf7#"
+    },
+    {
+      "name": "mate_in_1_queen_corner",
+      "fen": "5K1k/8/6Q1/8/8/8/8/8 w - - 0 1",
+      "best_move": "g6g7",
+      "category": "mate_in_1",
+      "description": "Queen delivers mate on g7 with king trapped in corner"
+    },
+    {
+      "name": "mate_in_1_rook",
+      "fen": "3k4/8/3K4/8/8/8/8/4R3 w - - 0 1",
+      "best_move": "e1e8",
+      "category": "mate_in_1",
+      "description": "Rook delivers mate on e8, king blocks escape"
+    },
+    {
+      "name": "starting_position_legal_count",
+      "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "legal_count": 20,
+      "category": "legality",
+      "description": "Starting position has exactly 20 legal moves"
+    },
+    {
+      "name": "stalemate_king_corner",
+      "fen": "k7/8/1K6/8/8/8/8/8 b - - 0 1",
+      "terminal": "stalemate",
+      "category": "stalemate",
+      "description": "Black king in corner, stalemate"
+    },
+    {
+      "name": "stalemate_simple",
+      "fen": "k7/2p5/1Kp5/8/8/8/8/8 b - - 0 1",
+      "terminal": "stalemate",
+      "category": "stalemate",
+      "description": "Black pawns block king, stalemate"
+    },
+    {
+      "name": "promotion_queen",
+      "fen": "8/4P3/8/8/8/8/8/4K2k w - - 0 1",
+      "best_move": "e7e8q",
+      "category": "promotion",
+      "description": "Promote pawn to queen"
+    },
+    {
+      "name": "knight_fork_wins_material",
+      "fen": "4k3/8/8/r7/3N4/8/8/4K3 w - - 0 1",
+      "best_move": "d4c6",
+      "category": "tactical",
+      "description": "Knight fork on c6 attacks king on e8 and rook on a5"
+    },
+    {
+      "name": "endgame_king_pawn",
+      "fen": "8/8/8/4k3/4P3/4K3/8/8 w - - 0 1",
+      "category": "endgame",
+      "description": "King and pawn endgame, white to move"
+    },
+    {
+      "name": "castling_rights",
+      "fen": "r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1",
+      "category": "legality",
+      "description": "Both sides can castle both ways"
+    },
+    {
+      "name": "en_passant_available",
+      "fen": "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 1",
+      "category": "legality",
+      "description": "En passant capture on d6 available"
+    },
+    {
+      "name": "fifty_move_rule",
+      "fen": "4k3/8/8/8/8/8/8/4K3 w - - 99 50",
+      "category": "draw_rules",
+      "description": "One move from fifty-move rule"
+    },
+    {
+      "name": "rook_endgame",
+      "fen": "8/8/8/8/8/4k3/4P3/R3K3 w - - 0 1",
+      "category": "endgame",
+      "description": "Rook and pawn vs king"
+    },
+    {
+      "name": "bishop_pair",
+      "fen": "rnbqkbnr/pppppppp/8/8/8/2B5/PPPPPPPP/RN1QKBNR w KQkq - 0 1",
+      "category": "tactical",
+      "description": "Bishop developed to c3"
+    },
+    {
+      "name": "queen_vs_pawns",
+      "fen": "8/8/8/3Q4/8/8/3p4/3K4 w - - 0 1",
+      "best_move": "d5d2",
+      "category": "tactical",
+      "description": "Queen captures pawn on d2"
+    }
+  ]
+}
