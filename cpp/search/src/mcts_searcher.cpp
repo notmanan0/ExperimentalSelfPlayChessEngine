@@ -1,6 +1,7 @@
 #include <chessmoe/search/mcts_searcher.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <numeric>
@@ -30,6 +31,27 @@ int normalized_depth(MctsLimits limits) {
 
 double normalized_cpuct(MctsLimits limits) {
   return limits.cpuct > 0.0 ? limits.cpuct : 1.5;
+}
+
+std::vector<chess::Move> profiled_legal_moves(
+    const chess::Position& position, MctsProfile& profile) {
+  const auto started = std::chrono::steady_clock::now();
+  auto legal_moves = chess::MoveGenerator::legal_moves(position);
+  const auto stopped = std::chrono::steady_clock::now();
+  profile.legal_move_generation_calls += 1;
+  profile.legal_move_generation_ms +=
+      std::chrono::duration<double, std::milli>(stopped - started).count();
+  return legal_moves;
+}
+
+eval::EvaluationRequest make_profiled_request(
+    const chess::Position& position, MctsProfile& profile) {
+  return eval::EvaluationRequest{
+      position,
+      profiled_legal_moves(position, profile),
+      position.hash(),
+      position.side_to_move(),
+  };
 }
 
 void apply_root_dirichlet_noise(MctsNode& root, MctsLimits limits) {
@@ -65,8 +87,9 @@ void apply_root_dirichlet_noise(MctsNode& root, MctsLimits limits) {
 }
 
 double expand_and_evaluate(MctsNode& node, const chess::Position& position,
-                           eval::ISinglePositionEvaluator& evaluator) {
-  const auto request = eval::EvaluationRequest::from_position(position);
+                           eval::ISinglePositionEvaluator& evaluator,
+                           MctsProfile& profile) {
+  const auto request = make_profiled_request(position, profile);
   node.board_hash = position.hash();
   node.expanded = true;
 
@@ -136,7 +159,8 @@ void backpropagate(std::vector<MctsNode*>& path, double leaf_value) {
 }
 
 void run_playout(MctsNode& root, const chess::Position& root_position,
-                 eval::ISinglePositionEvaluator& evaluator, MctsLimits limits) {
+                 eval::ISinglePositionEvaluator& evaluator, MctsLimits limits,
+                 MctsProfile& profile) {
   chess::Position position = root_position;
   std::vector<MctsNode*> path;
   path.push_back(&root);
@@ -156,26 +180,27 @@ void run_playout(MctsNode& root, const chess::Position& root_position,
   double leaf_value = 0.0;
   if (node->expanded && !node->terminal &&
       max_depth > 0 && depth >= max_depth) {
-    const auto legal_moves = chess::MoveGenerator::legal_moves(position);
+    const auto legal_moves = profiled_legal_moves(position, profile);
     if (legal_moves.empty()) {
       node->terminal = true;
       leaf_value = terminal_value_for_side_to_move(position);
     } else {
-      auto request = eval::EvaluationRequest::from_position(position);
+      auto request = make_profiled_request(position, profile);
       leaf_value = std::clamp(evaluator.evaluate(request).value, -1.0, 1.0);
     }
   } else {
-    leaf_value = expand_and_evaluate(*node, position, evaluator);
+    leaf_value = expand_and_evaluate(*node, position, evaluator, profile);
   }
 
   backpropagate(path, leaf_value);
 }
 
-MctsResult make_result(const MctsNode& root) {
+MctsResult make_result(const MctsNode& root, const MctsProfile& profile) {
   MctsResult result;
   result.root_value = root.mean_value();
   result.root_visits = static_cast<std::uint64_t>(root.visit_count);
   result.terminal = root.terminal;
+  result.profile = profile;
   result.root_distribution.reserve(root.children.size());
 
   const MctsNode* best = nullptr;
@@ -214,21 +239,22 @@ MctsSearcher::MctsSearcher(eval::ISinglePositionEvaluator& evaluator)
 MctsResult MctsSearcher::search(const chess::Position& root, MctsLimits limits) {
   MctsNode root_node;
   root_node.board_hash = root.hash();
+  MctsProfile profile;
 
-  const double root_value = expand_and_evaluate(root_node, root, evaluator_);
+  const double root_value = expand_and_evaluate(root_node, root, evaluator_, profile);
   if (root_node.terminal) {
     root_node.visit_count = 1;
     root_node.total_value = root_value;
-    return make_result(root_node);
+    return make_result(root_node, profile);
   }
 
   apply_root_dirichlet_noise(root_node, limits);
 
   for (int visit = 0; visit < normalized_visits(limits); ++visit) {
-    run_playout(root_node, root, evaluator_, limits);
+    run_playout(root_node, root, evaluator_, limits, profile);
   }
 
-  return make_result(root_node);
+  return make_result(root_node, profile);
 }
 
 }  // namespace chessmoe::search

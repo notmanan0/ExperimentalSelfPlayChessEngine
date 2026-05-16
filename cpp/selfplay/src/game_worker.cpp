@@ -66,7 +66,9 @@ GameWorkerResult GameWorker::run(int game_id) {
 
   auto game_config = config_.game;
   game_config.seed = config_.game.seed + static_cast<std::uint32_t>(game_id);
-  game_config.opening_fen = select_opening_for_game(game_id);
+  if (!config_.openings.fen_pool.empty() || !game_config.opening_fen) {
+    game_config.opening_fen = select_opening_for_game(game_id);
+  }
 
   if (config_.openings.color_balancing && !config_.openings.fen_pool.empty()) {
     const auto opening_idx =
@@ -142,6 +144,10 @@ GameWorkerResult GameWorker::run(int game_id) {
       search_result = searcher.search(position, limits);
     }
     diag.mcts_selection_calls++;
+    diag.mcts_legal_move_generation_calls +=
+        search_result.profile.legal_move_generation_calls;
+    diag.mcts_legal_move_generation_ms +=
+        search_result.profile.legal_move_generation_ms;
 
     if (!search_result.has_best_move) {
       game.result = GameResult::Draw;

@@ -29,7 +29,9 @@ GpuSelfPlayMetrics build_metrics(
     int games_completed, std::uint64_t samples_written,
     double elapsed_ms,
     const inference::AsyncBatchingMetrics& inference_metrics,
-    int terminal_counts[5]) {
+    int terminal_counts[5],
+    std::uint64_t mcts_legal_move_generation_calls,
+    double mcts_legal_move_generation_ms) {
   GpuSelfPlayMetrics m;
   m.games_completed = static_cast<std::uint64_t>(games_completed);
   m.samples_written = samples_written;
@@ -70,6 +72,8 @@ GpuSelfPlayMetrics build_metrics(
     m.padding_ratio = static_cast<double>(m.padded_positions) /
                       static_cast<double>(total_batch_slots);
   }
+  m.mcts_legal_move_generation_calls = mcts_legal_move_generation_calls;
+  m.mcts_legal_move_generation_ms = mcts_legal_move_generation_ms;
 
   return m;
 }
@@ -121,7 +125,10 @@ GenerationResult GenerationController::run(const ResolvedConfig& config) {
     tc.store(0);
   }
   std::mutex exception_mutex;
+  std::mutex profile_mutex;
   std::exception_ptr first_exception;
+  std::uint64_t mcts_legal_move_generation_calls = 0;
+  double mcts_legal_move_generation_ms = 0.0;
   const auto started = std::chrono::steady_clock::now();
 
   std::vector<std::thread> workers;
@@ -166,6 +173,13 @@ GenerationResult GenerationController::run(const ResolvedConfig& config) {
           auto gw_result = worker.run(game_id);
           const auto game_samples =
               static_cast<std::uint64_t>(gw_result.game.samples.size());
+          {
+            std::lock_guard lock(profile_mutex);
+            mcts_legal_move_generation_calls +=
+                gw_result.diagnostics.mcts_legal_move_generation_calls;
+            mcts_legal_move_generation_ms +=
+                gw_result.diagnostics.mcts_legal_move_generation_ms;
+          }
 
           if (config.pipeline.write_replay) {
             auto options = config.pipeline.replay_options;
@@ -244,7 +258,9 @@ GenerationResult GenerationController::run(const ResolvedConfig& config) {
   }
   result.metrics = build_metrics(completed_games.load(),
                                  samples_written.load(), elapsed_ms,
-                                 async_eval.metrics_snapshot(), tc);
+                                 async_eval.metrics_snapshot(), tc,
+                                 mcts_legal_move_generation_calls,
+                                 mcts_legal_move_generation_ms);
 
   if (config.pipeline.write_replay) {
     for (auto& p : replay_paths) {
@@ -271,6 +287,10 @@ GenerationResult GenerationController::run(const ResolvedConfig& config) {
         result.metrics.batch_fill_ratio;
     result.profile_breakdown["avg_inference_latency_ms"] =
         result.metrics.average_inference_latency_ms;
+    result.profile_breakdown["mcts_legal_move_generation_calls"] =
+        static_cast<double>(result.metrics.mcts_legal_move_generation_calls);
+    result.profile_breakdown["mcts_legal_move_generation_ms"] =
+        result.metrics.mcts_legal_move_generation_ms;
 
     const auto profile_path = config.run_dir / "profile.json";
     std::ofstream pf(profile_path);
@@ -352,6 +372,10 @@ void GenerationController::write_run_metadata(const ResolvedConfig& config,
   out << "  \"padding_ratio\": " << result.metrics.padding_ratio << ",\n";
   out << "  \"avg_inference_latency_ms\": "
       << result.metrics.average_inference_latency_ms << ",\n";
+  out << "  \"mcts_legal_move_generation_calls\": "
+      << result.metrics.mcts_legal_move_generation_calls << ",\n";
+  out << "  \"mcts_legal_move_generation_ms\": "
+      << result.metrics.mcts_legal_move_generation_ms << ",\n";
   out << "  \"replay_chunks\": " << result.replay_paths.size() << ",\n";
   out << "  \"health_passed\": "
       << (result.health.passed ? "true" : "false") << ",\n";

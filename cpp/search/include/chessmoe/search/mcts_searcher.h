@@ -45,12 +45,18 @@ struct RootMoveStats {
   std::uint64_t board_hash{0};
 };
 
+struct MctsProfile {
+  std::uint64_t legal_move_generation_calls{0};
+  double legal_move_generation_ms{0.0};
+};
+
 struct MctsResult {
   bool has_best_move{false};
   chess::Move best_move{};
   double root_value{0.0};
   std::uint64_t root_visits{0};
   bool terminal{false};
+  MctsProfile profile{};
   std::vector<RootMoveStats> root_distribution;
 };
 

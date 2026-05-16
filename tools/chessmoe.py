@@ -149,6 +149,15 @@ def cmd_full_cycle(args: argparse.Namespace) -> int:
     config = PipelineConfig(
         phase=args.phase, hardware_profile=hw, quality_profile=q,
         engine_path=Path(args.engine) if hasattr(args, "engine") and args.engine else None,
+        train_config=args.train_config,
+        checkpoint=Path(args.checkpoint) if args.checkpoint else None,
+        onnx_output=Path(args.onnx_output) if args.onnx_output else None,
+        engine_output=Path(args.engine_output) if args.engine_output else None,
+        arena_config=args.arena_config,
+        candidate=Path(args.candidate) if args.candidate else None,
+        best=Path(args.best) if args.best else None,
+        skip_engine_build=args.skip_engine_build,
+        skip_promotion=args.skip_promotion,
         allow_debug=getattr(args, "allow_debug", False),
     )
     runner = PipelineRunner(config)

@@ -145,6 +145,8 @@ void test_pipeline_completes_multiple_concurrent_games() {
           "metrics count completed games");
   require(result.metrics.positions_evaluated >= 2,
           "pipeline evaluates at least one position per game");
+  require(result.metrics.mcts_legal_move_generation_calls >= 2,
+          "pipeline exposes MCTS legal move generation profiling counters");
   for (const auto& game : result.games) {
     require(game.result != chessmoe::selfplay::GameResult::Unknown,
             "completed game has final result");

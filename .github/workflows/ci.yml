@@ -83,3 +83,76 @@ jobs:
         run: python -m pytest tests/python -v --tb=short
         env:
           TORCH_COMPILE_DISABLE: "1"
+
+  cpu-e2e-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install python-chess pytest
+          pip install -e .
+
+      - name: Build CPU self-play
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build --config Debug -j$(nproc) --target selfplay
+
+      - name: Generate tiny CPU replay
+        run: |
+          ./build/bin/selfplay \
+            --hardware-profile cpu_bootstrap_debug \
+            --quality debug_smoke \
+            --phase 0 \
+            --output-dir data/replay/phase0 \
+            --games 2 \
+            --max-plies 4 \
+            --visits 1 \
+            --deterministic \
+            --allow-debug
+
+      - name: Validate and index replay
+        run: |
+          python tools/convert/validate_replay.py data/replay/phase0/*.cmrep
+          python tools/convert/index_replay_dir.py data/replay/phase0 --index data/replay/replay.sqlite
+
+      - name: Train one tiny CPU epoch
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          config = {
+              "replay_index": "data/replay/replay.sqlite",
+              "checkpoint_path": "weights/ci_tiny.pt",
+              "metrics_path": "data/replay/ci_tiny_metrics.jsonl",
+              "epochs": 1,
+              "batch_size": 2,
+              "learning_rate": 0.001,
+              "weight_decay": 0.0001,
+              "train_fraction": 1.0,
+              "validation_fraction": 0.0,
+              "seed": 1,
+              "device": "cpu",
+              "num_workers": 0,
+              "amp": False,
+              "compile_model": False,
+              "scheduler": "none",
+              "model_kind": "tiny_cnn",
+              "model_channels": 8,
+              "model_hidden": 32,
+          }
+          path = Path("configs/training/ci_tiny.json")
+          path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+          PY
+          python -m chessmoe.training.train --config configs/training/ci_tiny.json

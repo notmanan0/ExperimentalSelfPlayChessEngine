@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import json
 from pathlib import Path
 
@@ -83,3 +84,49 @@ def test_neural_backend_returns_valid_result():
     assert result.result in ("win", "loss", "draw")
     assert result.game_id == 0
     assert result.candidate_color == "white"
+
+
+class PolicyTrapEvaluator:
+    def __init__(self, root_fen: str, policy_trap: str, value_best: str):
+        self.root_fen = root_fen
+        self.policy_trap = policy_trap
+        self.value_best = value_best
+
+    def evaluate(self, fen, legal_moves):
+        import chess
+
+        probs = {m: 1.0 for m in legal_moves}
+        if fen == self.root_fen and self.policy_trap in probs:
+            probs[self.policy_trap] = 5.0
+        total = sum(probs.values())
+        probs = {m: v / total for m, v in probs.items()}
+
+        board = chess.Board(fen)
+        if board.piece_at(chess.E4) == chess.Piece(chess.PAWN, chess.WHITE):
+            value = -0.95 if board.turn == chess.BLACK else 0.95
+        elif board.piece_at(chess.D4) == chess.Piece(chess.PAWN, chess.WHITE):
+            value = 0.95 if board.turn == chess.BLACK else -0.95
+        else:
+            value = 0.0
+        return probs, value
+
+
+def test_neural_backend_search_uses_root_value_not_policy_only():
+    evaluator = PolicyTrapEvaluator(
+        STARTING_FEN,
+        policy_trap="d2d4",
+        value_best="e2e4",
+    )
+    backend = NeuralMatchBackend(
+        evaluator,
+        evaluator,
+        MctsArenaConfig(visits=160, cpuct=1.5, temperature=0.0),
+    )
+
+    selected = backend.select_move(
+        STARTING_FEN,
+        evaluator,
+        rng=random.Random(7),
+    )
+
+    assert selected == "e2e4"

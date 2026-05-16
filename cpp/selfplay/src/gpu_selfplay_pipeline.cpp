@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include <thread>
 
+#include <chessmoe/selfplay/game_worker.h>
+
 namespace chessmoe::selfplay {
 
 namespace {
@@ -41,7 +43,9 @@ GpuSelfPlayMetrics make_metrics(
     std::uint64_t samples_written,
     double elapsed_ms,
     const inference::AsyncBatchingMetrics& inference_metrics,
-    std::optional<double> sampled_gpu_utilization_percent) {
+    std::optional<double> sampled_gpu_utilization_percent,
+    std::uint64_t mcts_legal_move_generation_calls,
+    double mcts_legal_move_generation_ms) {
   GpuSelfPlayMetrics metrics;
   metrics.games_completed = static_cast<std::uint64_t>(games_completed);
   metrics.samples_written = samples_written;
@@ -57,6 +61,9 @@ GpuSelfPlayMetrics make_metrics(
       inference_metrics.valid_batch_size_histogram;
   metrics.gpu_utilization_percent =
       sampled_gpu_utilization_percent.value_or(0.0);
+  metrics.mcts_legal_move_generation_calls =
+      mcts_legal_move_generation_calls;
+  metrics.mcts_legal_move_generation_ms = mcts_legal_move_generation_ms;
 
   const double elapsed_seconds = elapsed_ms / 1000.0;
   if (elapsed_seconds > 0.0) {
@@ -99,7 +106,10 @@ GpuSelfPlayRunResult GpuSelfPlayPipeline::run(
   std::atomic<int> completed_games{0};
   std::atomic<std::uint64_t> samples_written{0};
   std::mutex exception_mutex;
+  std::mutex profile_mutex;
   std::exception_ptr first_exception;
+  std::uint64_t mcts_legal_move_generation_calls = 0;
+  double mcts_legal_move_generation_ms = 0.0;
   const auto started = std::chrono::steady_clock::now();
 
   const int thread_count =
@@ -109,21 +119,31 @@ GpuSelfPlayRunResult GpuSelfPlayPipeline::run(
 
   for (int thread_index = 0; thread_index < thread_count; ++thread_index) {
     workers.emplace_back([&, thread_index] {
-      (void)thread_index;
       try {
-        SelfPlayGenerator generator(async_evaluator);
+        GameWorkerConfig worker_config;
+        worker_config.game = config.game;
+        worker_config.worker_id = static_cast<std::uint32_t>(thread_index);
+        worker_config.openings.fen_pool = config.opening_fen_pool;
+        worker_config.openings.deterministic_selection = true;
+        worker_config.openings.color_balancing = true;
+        GameWorker worker(async_evaluator, worker_config);
         for (;;) {
           const int game_id = next_game.fetch_add(1);
           if (game_id >= config.total_games) {
             break;
           }
 
-          auto game_config = config.game;
-          game_config.seed =
-              config.game.seed + static_cast<std::uint32_t>(game_id);
-          auto game = generator.generate(game_config);
+          auto worker_result = worker.run(game_id);
+          auto game = std::move(worker_result.game);
           const auto game_samples =
               static_cast<std::uint64_t>(game.samples.size());
+          {
+            std::lock_guard lock(profile_mutex);
+            mcts_legal_move_generation_calls +=
+                worker_result.diagnostics.mcts_legal_move_generation_calls;
+            mcts_legal_move_generation_ms +=
+                worker_result.diagnostics.mcts_legal_move_generation_ms;
+          }
 
           if (config.write_replay) {
             auto options = config.replay_options;
@@ -179,7 +199,8 @@ GpuSelfPlayRunResult GpuSelfPlayPipeline::run(
   result.metrics = make_metrics(
       completed_games.load(), samples_written.load(),
       std::chrono::duration<double, std::milli>(stopped - started).count(),
-      async_evaluator.metrics_snapshot(), config.sampled_gpu_utilization_percent);
+      async_evaluator.metrics_snapshot(), config.sampled_gpu_utilization_percent,
+      mcts_legal_move_generation_calls, mcts_legal_move_generation_ms);
 
   if (config.write_replay) {
     for (auto& path : replay_paths) {

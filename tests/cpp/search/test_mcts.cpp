@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <map>
 #include <numeric>
 #include <stdexcept>
 #include <string>
@@ -38,6 +39,19 @@ const chessmoe::search::RootMoveStats* find_stat(
     return stat.move.to_uci() == uci;
   });
   return it == stats.end() ? nullptr : &*it;
+}
+
+chessmoe::chess::Move require_move(
+    const std::vector<chessmoe::chess::Move>& moves,
+    std::string_view uci) {
+  const auto it = std::find_if(moves.begin(), moves.end(), [&](const auto move) {
+    return move.to_uci() == uci;
+  });
+  if (it == moves.end()) {
+    throw std::runtime_error("required test move is not legal: " +
+                             std::string(uci));
+  }
+  return *it;
 }
 
 void test_root_expansion_masks_to_legal_moves() {
@@ -182,6 +196,77 @@ void test_policy_prior_can_drive_bestmove() {
           "root distribution includes preferred move visits");
 }
 
+void test_root_selects_move_by_root_player_value_not_child_value() {
+  class ToyValueEvaluator final : public chessmoe::eval::ISinglePositionEvaluator {
+   public:
+    explicit ToyValueEvaluator(
+        std::map<std::uint64_t, double> values_by_hash)
+        : values_by_hash_(std::move(values_by_hash)) {}
+
+    chessmoe::eval::EvaluationResult evaluate(
+        const chessmoe::eval::EvaluationRequest& request) override {
+      chessmoe::eval::EvaluationResult result;
+      const auto it = values_by_hash_.find(request.hash);
+      result.value = it == values_by_hash_.end() ? 0.0 : it->second;
+      const double prior =
+          request.legal_moves.empty() ? 0.0 : 1.0 / request.legal_moves.size();
+      for (const auto move : request.legal_moves) {
+        result.policy.push_back({move, 0.0, prior});
+      }
+      result.wdl = {0.0, 1.0, 0.0};
+      return result;
+    }
+
+   private:
+    std::map<std::uint64_t, double> values_by_hash_;
+  };
+
+  const auto root = chessmoe::chess::Fen::parse(
+      "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  const auto root_moves = chessmoe::chess::MoveGenerator::legal_moves(root);
+  auto winning_for_root = root;
+  winning_for_root.make_move(require_move(root_moves, "e2e4"));
+  auto losing_for_root = root;
+  losing_for_root.make_move(require_move(root_moves, "d2d4"));
+
+  ToyValueEvaluator evaluator({
+      {winning_for_root.hash(), -0.95},
+      {losing_for_root.hash(), 0.95},
+  });
+  chessmoe::search::MctsSearcher searcher(evaluator);
+  const auto result =
+      searcher.search(root, chessmoe::search::MctsLimits{.visits = 160});
+
+  require(result.has_best_move, "search returns a bestmove");
+  require(result.best_move.to_uci() == "e2e4",
+          "MCTS must prefer the move whose child value is bad for the child side");
+  const auto* winning = find_stat(result.root_distribution, "e2e4");
+  const auto* losing = find_stat(result.root_distribution, "d2d4");
+  require(winning != nullptr && losing != nullptr,
+          "root distribution includes the test moves");
+  require(winning->visit_count > losing->visit_count,
+          "winning root move receives more visits than losing root move");
+  require(winning->mean_value > 0.0,
+          "winning child value is stored from the root player's perspective");
+  require(losing->mean_value < 0.0,
+          "losing child value is stored from the root player's perspective");
+}
+
+void test_mcts_profile_counts_legal_move_generation_work() {
+  const auto position = chessmoe::chess::Fen::parse(
+      "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  chessmoe::eval::MaterialEvaluator batch;
+  chessmoe::eval::SynchronousEvaluator evaluator(batch);
+  chessmoe::search::MctsSearcher searcher(evaluator);
+  const auto result =
+      searcher.search(position, chessmoe::search::MctsLimits{.visits = 4});
+
+  require(result.profile.legal_move_generation_calls >= 5,
+          "MCTS profile counts root and playout legal move generation calls");
+  require(result.profile.legal_move_generation_ms >= 0.0,
+          "MCTS profile reports legal move generation time");
+}
+
 }  // namespace
 
 int main() {
@@ -192,6 +277,8 @@ int main() {
     test_depth_budget_limits_expansion_depth();
     test_deterministic_output_with_seeded_random_evaluator();
     test_policy_prior_can_drive_bestmove();
+    test_root_selects_move_by_root_player_value_not_child_value();
+    test_mcts_profile_counts_legal_move_generation_work();
   } catch (const std::exception& e) {
     std::cerr << "mcts_tests failed: " << e.what() << '\n';
     return EXIT_FAILURE;

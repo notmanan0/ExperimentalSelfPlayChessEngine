@@ -83,6 +83,8 @@ struct SelfPlayGame {
   std::string final_fen;
 };
 
+// Legacy single-game generator retained for focused tests. New orchestration
+// should use GameWorker through GenerationController.
 class SelfPlayGenerator {
  public:
   explicit SelfPlayGenerator(eval::ISinglePositionEvaluator& evaluator);

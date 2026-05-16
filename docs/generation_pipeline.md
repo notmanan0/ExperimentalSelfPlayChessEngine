@@ -4,7 +4,7 @@ This workflow keeps CPU and GPU responsibilities separate. The CPU owns legal mo
 
 Material bootstrap is weak but useful: it creates initial replay without needing a neural model. Very short games or low samples per game usually indicate weak or broken self-play settings and should be investigated before training the next generation.
 
-`gpu_selfplay_benchmark` is retained only for compatibility. Use `selfplay` for production self-play generation.
+`GenerationController` plus `GameWorker` is the production self-play path. `GpuSelfPlayPipeline` and `SelfPlayGenerator` are retained only for focused legacy tests and benchmarks; new orchestration should not add logic there.
 
 ## Windows Build
 
@@ -89,7 +89,9 @@ GPU self-play only happens with a neural evaluator such as TensorRT. Material se
 
 ## Arena And Promotion
 
-The current arena path is still placeholder-seeded and must not produce meaningful promotion decisions. Only real model-vs-model search games may write promotion decisions.
+`arena-neural` runs real model-vs-model games through a Python PUCT search using legal move masks, neural policy priors, and side-to-move value backup. Promotion decisions may use this path when the arena configuration has enough games for the configured gate.
+
+The seeded `arena` backend remains a deterministic test harness. Do not treat seeded results as playing-strength evidence for promotion.
 
 Promotion preserves history before replacing the current best:
 

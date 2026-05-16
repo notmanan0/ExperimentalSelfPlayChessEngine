@@ -68,6 +68,8 @@ struct GpuSelfPlayMetrics {
   double average_plies_per_game{0.0};
   double batch_fill_ratio{0.0};
   double padding_ratio{0.0};
+  std::uint64_t mcts_legal_move_generation_calls{0};
+  double mcts_legal_move_generation_ms{0.0};
 };
 
 struct GpuSelfPlayRunResult {
@@ -76,6 +78,9 @@ struct GpuSelfPlayRunResult {
   GpuSelfPlayMetrics metrics{};
 };
 
+// Legacy compatibility wrapper for Phase 13 tests and benchmarks.
+// New production generation should enter through GenerationController, which
+// owns orchestration and delegates per-game work to GameWorker.
 class GpuSelfPlayPipeline {
  public:
   explicit GpuSelfPlayPipeline(eval::IBatchEvaluator& evaluator);

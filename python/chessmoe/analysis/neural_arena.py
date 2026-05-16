@@ -36,6 +36,7 @@ class ArenaMctsNode:
     prior: float = 0.0
     visit_count: int = 0
     total_value: float = 0.0
+    terminal: bool = False
     children: dict[str, ArenaMctsNode] | None = None
 
     def mean_value(self) -> float:
@@ -138,7 +139,7 @@ class PytorchModelEvaluator:
 
 
 class NeuralMatchBackend:
-    """Arena backend that uses a neural evaluator for both sides."""
+    """Arena backend that uses neural-evaluator PUCT search for both sides."""
 
     def __init__(
         self,
@@ -188,16 +189,7 @@ class NeuralMatchBackend:
             else:
                 eval_fn = self.best_eval
 
-            probs, value = eval_fn.evaluate(fen, legal)
-
-            if self.config.temperature <= 0.0:
-                selected = max(probs, key=probs.get)
-            else:
-                moves = list(probs.keys())
-                weights = [probs[m] ** (1.0 / self.config.temperature) for m in moves]
-                total = sum(weights)
-                weights = [w / total for w in weights]
-                selected = moves[rng.choices(range(len(moves)), weights=weights)[0]]
+            selected = self.select_move(fen, eval_fn, rng)
 
             fen = _apply_move(fen, selected)
             ply += 1
@@ -219,6 +211,132 @@ class NeuralMatchBackend:
             result=result_str,
             seed=game.seed,
         )
+
+    def select_move(
+        self,
+        fen: str,
+        evaluator: PositionEvaluator,
+        rng: random.Random,
+    ) -> str:
+        root = ArenaMctsNode()
+        root_value = _expand_mcts_node(root, fen, evaluator)
+        if root.terminal or not root.children:
+            raise RuntimeError("cannot select a move from terminal arena position")
+        del root_value
+
+        visits = max(1, self.config.visits)
+        for _ in range(visits):
+            _run_mcts_playout(root, fen, evaluator, self.config.cpuct)
+
+        moves = list(root.children.keys())
+        if self.config.temperature <= 0.0:
+            return max(
+                moves,
+                key=lambda m: (
+                    root.children[m].visit_count,
+                    root.children[m].mean_value(),
+                    m,
+                ),
+            )
+
+        weights = [
+            max(0.0, float(root.children[m].visit_count))
+            ** (1.0 / self.config.temperature)
+            for m in moves
+        ]
+        if sum(weights) <= 0.0:
+            weights = [1.0 for _ in moves]
+        return moves[rng.choices(range(len(moves)), weights=weights)[0]]
+
+
+def _run_mcts_playout(
+    root: ArenaMctsNode,
+    root_fen: str,
+    evaluator: PositionEvaluator,
+    cpuct: float,
+) -> None:
+    import chess
+
+    board = chess.Board(root_fen)
+    path = [root]
+    node = root
+
+    while node.children and not node.terminal:
+        move_uci = _select_puct_child(node, cpuct)
+        board.push(chess.Move.from_uci(move_uci))
+        node = node.children[move_uci]
+        path.append(node)
+
+    leaf_value = _expand_mcts_node(node, board.fen(), evaluator)
+    _backpropagate(path, leaf_value)
+
+
+def _select_puct_child(node: ArenaMctsNode, cpuct: float) -> str:
+    if not node.children:
+        raise RuntimeError("cannot select child from unexpanded node")
+    parent_visits = max(1, node.visit_count)
+    best_move = ""
+    best_score = -math.inf
+    for move, child in node.children.items():
+        score = child.mean_value() + (
+            max(0.0, cpuct)
+            * child.prior
+            * math.sqrt(parent_visits)
+            / (1.0 + child.visit_count)
+        )
+        if score > best_score:
+            best_score = score
+            best_move = move
+    return best_move
+
+
+def _expand_mcts_node(
+    node: ArenaMctsNode,
+    fen: str,
+    evaluator: PositionEvaluator,
+) -> float:
+    legal = _get_legal_moves_from_fen(fen)
+    if not legal:
+        node.terminal = True
+        return _terminal_value_for_side_to_move(fen)
+
+    probs, value = evaluator.evaluate(fen, legal)
+    normalized = _normalize_policy(probs, legal)
+    node.children = {
+        move: ArenaMctsNode(prior=normalized[move])
+        for move in legal
+    }
+    return max(-1.0, min(1.0, value))
+
+
+def _backpropagate(path: list[ArenaMctsNode], leaf_value: float) -> None:
+    value_for_node_side = leaf_value
+    for reverse_index in range(len(path), 0, -1):
+        node = path[reverse_index - 1]
+        node.visit_count += 1
+        if reverse_index == 1:
+            node.total_value += value_for_node_side
+        else:
+            node.total_value += -value_for_node_side
+        value_for_node_side = -value_for_node_side
+
+
+def _normalize_policy(probs: dict[str, float], legal: list[str]) -> dict[str, float]:
+    clipped = {move: max(0.0, float(probs.get(move, 0.0))) for move in legal}
+    total = sum(clipped.values())
+    if total <= 0.0:
+        uniform = 1.0 / len(legal)
+        return {move: uniform for move in legal}
+    return {move: clipped[move] / total for move in legal}
+
+
+def _terminal_value_for_side_to_move(fen: str) -> float:
+    import chess
+
+    board = chess.Board(fen)
+    if board.is_checkmate():
+        return -1.0
+    return 0.0
 
 
 def _get_legal_moves_from_fen(fen: str) -> list[str]:
@@ -253,7 +371,11 @@ def run_neural_arena(
     best_eval: PositionEvaluator,
     mcts_config: MctsArenaConfig | None = None,
 ) -> ArenaRunResult:
-    backend = NeuralMatchBackend(candidate_eval, best_eval, mcts_config)
+    backend = NeuralMatchBackend(
+        candidate_eval,
+        best_eval,
+        mcts_config or MctsArenaConfig(visits=config.search_budget),
+    )
     results = [
         backend.play(game, Path(config.candidate_model), Path(config.best_model))
         for game in build_match_schedule(config)

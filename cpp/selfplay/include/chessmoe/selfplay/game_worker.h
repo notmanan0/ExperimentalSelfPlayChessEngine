@@ -32,6 +32,8 @@ struct GameWorkerDiagnostics {
   double mcts_total_ms{0.0};
   double terminal_check_ms{0.0};
   double legal_gen_ms{0.0};
+  std::uint64_t mcts_legal_move_generation_calls{0};
+  double mcts_legal_move_generation_ms{0.0};
   double mcts_selection_ms{0.0};
   double mcts_expansion_ms{0.0};
   double replay_write_ms{0.0};
