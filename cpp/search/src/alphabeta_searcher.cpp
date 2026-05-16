@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <cstring>
 
 #include <chessmoe/chess/move_generator.h>
 
