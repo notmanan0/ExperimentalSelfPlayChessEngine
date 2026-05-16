@@ -1,5 +1,6 @@
 #include <chessmoe/selfplay/config_resolver.h>
 
+#include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <filesystem>
@@ -29,7 +30,7 @@ std::string read_text_file(const std::filesystem::path& path) {
 using ConfigMap = std::map<std::string, std::string>;
 
 std::string normalize_key(std::string key) {
-  std::ranges::replace(key, '-', '_');
+  std::replace(key.begin(), key.end(), '-', '_');
   return key;
 }
 

@@ -9,6 +9,15 @@ from typing import Any
 from chessmoe.models.encoding import encode_fen, move_to_index, NUM_MOVE_BUCKETS
 
 
+def _as_flat_sequence(values) -> list[float]:
+    import torch
+    if isinstance(values, torch.Tensor):
+        return [float(v) for v in values.detach().cpu().flatten().tolist()]
+    if hasattr(values, "flatten") and callable(values.flatten):
+        values = values.flatten()
+    return [float(v) for v in values]
+
+
 @dataclass
 class DiagnosticsResult:
     metric: str
@@ -18,11 +27,7 @@ class DiagnosticsResult:
 
 def compute_policy_entropy(policy_target, legal_moves: list[str] | None = None) -> float:
     """Compute Shannon entropy of a policy distribution."""
-    import torch
-    if isinstance(policy_target, torch.Tensor):
-        probs = policy_target.numpy()
-    else:
-        probs = policy_target
+    probs = _as_flat_sequence(policy_target)
 
     entropy = 0.0
     for p in probs:
@@ -41,17 +46,11 @@ def compute_topk_accuracy(
     if k_values is None:
         k_values = [1, 3, 5, 10]
 
-    if isinstance(predicted_policy, torch.Tensor):
-        pred = predicted_policy.numpy()
-    else:
-        pred = predicted_policy
-    if isinstance(target_policy, torch.Tensor):
-        tgt = target_policy.numpy()
-    else:
-        tgt = target_policy
+    pred = _as_flat_sequence(predicted_policy)
+    tgt = _as_flat_sequence(target_policy)
 
-    target_move = int(tgt.argmax())
-    pred_order = pred.argsort()[::-1]
+    target_move = max(range(len(tgt)), key=tgt.__getitem__)
+    pred_order = sorted(range(len(pred)), key=pred.__getitem__, reverse=True)
 
     results = {}
     for k in k_values:
