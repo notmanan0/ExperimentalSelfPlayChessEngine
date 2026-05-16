@@ -1,0 +1,23 @@
+{
+  "model_kind": "dense_transformer",
+  "model_params": {
+    "d_model": 128,
+    "num_layers": 4,
+    "num_heads": 8,
+    "ffn_dim": 512,
+    "dropout": 0.1
+  },
+  "teacher_targets": "data/teacher/pesto_ab_targets.jsonl",
+  "target_policy": "teacher_alphabeta",
+  "epochs": 10,
+  "batch_size": 64,
+  "learning_rate": 0.001,
+  "weight_decay": 0.0001,
+  "scheduler": "cosine",
+  "warmup_epochs": 1,
+  "policy_weight": 1.0,
+  "wdl_weight": 1.0,
+  "moves_left_weight": 0.0,
+  "checkpoint_path": "weights/dense_teacher_bootstrap.pt",
+  "log_interval": 10
+}

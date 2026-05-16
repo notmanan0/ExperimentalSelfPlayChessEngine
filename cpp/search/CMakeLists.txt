@@ -1,4 +1,5 @@
 add_library(chessmoe_search
+  src/alphabeta_searcher.cpp
   src/gumbel_searcher.cpp
   src/mcts_searcher.cpp
   src/simple_searcher.cpp

@@ -2,6 +2,7 @@ add_library(chessmoe_eval
   src/evaluator.cpp
   src/material_evaluator.cpp
   src/material_policy_evaluator.cpp
+  src/pesto_evaluator.cpp
   src/random_evaluator.cpp
 )
 

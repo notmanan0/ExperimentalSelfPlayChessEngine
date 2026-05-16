@@ -1,6 +1,7 @@
 #include <chessmoe/selfplay/selfplay_app.h>
 
 #include <chessmoe/eval/material_evaluator.h>
+#include <chessmoe/eval/pesto_evaluator.h>
 #include <chessmoe/inference/tensorrt_engine.h>
 #include <chessmoe/inference/tensorrt_evaluator.h>
 
@@ -58,6 +59,9 @@ EvaluatorMode parse_mode(std::string_view value) {
   if (value == "material") {
     return EvaluatorMode::Material;
   }
+  if (value == "pesto") {
+    return EvaluatorMode::Pesto;
+  }
   if (value == "tensorrt") {
     return EvaluatorMode::TensorRT;
   }
@@ -65,7 +69,7 @@ EvaluatorMode parse_mode(std::string_view value) {
     return EvaluatorMode::Onnx;
   }
   throw std::invalid_argument("unsupported evaluator mode: " +
-                              std::string(value));
+                               std::string(value));
 }
 
 bool parse_bool(std::string_view value) {
@@ -210,6 +214,9 @@ std::unique_ptr<eval::IBatchEvaluator> create_batch_evaluator(
   if (options.evaluator_mode == EvaluatorMode::Material) {
     return std::make_unique<eval::MaterialEvaluator>();
   }
+  if (options.evaluator_mode == EvaluatorMode::Pesto) {
+    return std::make_unique<eval::PestoEvaluator>();
+  }
   if (options.evaluator_mode == EvaluatorMode::Onnx) {
     throw std::runtime_error(
         "ONNX C++ evaluator is unavailable; build a real ONNX Runtime backend "
@@ -261,6 +268,8 @@ std::string evaluator_mode_name(EvaluatorMode mode) {
   switch (mode) {
     case EvaluatorMode::Material:
       return "material";
+    case EvaluatorMode::Pesto:
+      return "pesto";
     case EvaluatorMode::TensorRT:
       return "tensorrt";
     case EvaluatorMode::Onnx:

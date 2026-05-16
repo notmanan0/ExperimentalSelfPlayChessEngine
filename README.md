@@ -27,6 +27,8 @@ CPU owns legal move generation, board state, MCTS tree bookkeeping, game orchest
 - Config-driven profile resolution with CLI overrides.
 - Debug build detection and refusal for serious generation.
 - Material evaluator is bootstrap/debug only with explicit warnings.
+- PeSTO tapered handcrafted evaluator for stronger bootstrap data generation.
+- Bitboard utility layer with popcount, lsb/msb, shift helpers, and attack tables.
 - TensorRT support is optional at build time. Selecting `--evaluator tensorrt` without support or without `--engine` fails clearly.
 - C++ ONNX Runtime inference is not implemented. Selecting `--evaluator onnx` fails clearly.
 - Replay health checks run automatically after generation.
@@ -59,7 +61,123 @@ ctest --test-dir build-nmake -C Debug --output-on-failure
 python -m pytest tests/python --basetemp python-test-output/pytest-current
 ```
 
-Expected: 12 C++ tests and 136 Python tests pass.
+Expected: 15 C++ tests and 193 Python tests pass.
+
+## Bootstrap Strategy
+
+The engine supports a classical bootstrap path so neural self-play starts from useful chess knowledge:
+
+1. **Material evaluator** (`--evaluator material`): Uniform policy, material-only value. Debug/smoke only.
+2. **PeSTO evaluator** (`--evaluator pesto`): Tapered piece-square table evaluation with static move ordering for policy priors. Usable for bootstrap data generation.
+3. **Neural evaluator** (`--evaluator tensorrt`): Full neural inference via TensorRT.
+
+### PeSTO Bootstrap
+
+Generate stronger initial training data using the handcrafted PeSTO evaluator:
+
+```powershell
+.\build-nmake\bin\Debug\selfplay.exe --evaluator pesto --hardware-profile cpu_pesto_bootstrap --games 256 --allow-debug
+python tools/chessmoe.py bootstrap
+```
+
+Or use the config:
+
+```powershell
+.\build-nmake\bin\Debug\selfplay.exe --config configs/selfplay/bootstrap_pesto.json --allow-debug
+```
+
+### Teacher Target Generation
+
+Generate soft policy/value targets using alpha-beta search with PeSTO evaluation:
+
+```powershell
+python tools/teacher/generate_teacher_targets.py \
+    --fen-file data/openings/bootstrap_fens.txt \
+    --output data/teacher/pesto_ab_targets.jsonl \
+    --depth 4
+```
+
+Optional Stockfish distillation (requires Stockfish binary):
+
+```powershell
+python tools/teacher/label_with_stockfish.py \
+    --fen-file data/openings/bootstrap_fens.txt \
+    --stockfish-path C:\path\to\stockfish.exe \
+    --output data/teacher/sf_targets.jsonl \
+    --depth 12
+```
+
+### Teacher Bootstrap Training
+
+Train using teacher targets:
+
+```powershell
+python tools/chessmoe.py train --config configs/training/dense_teacher_bootstrap.json
+```
+
+### Bitboard Utilities
+
+The `chessmoe::chess` namespace includes bitboard utilities in `bitboard.h`:
+
+- `popcount`, `lsb_index`, `msb_index`, `lsb_square`, `msb_square`
+- `pop_lsb` for iterating over set bits
+- `file_mask`, `rank_mask` for board masks
+- `shift_n/s/e/w/ne/nw/se/sw` for piece movement
+- `knight_attacks`, `king_attacks` attack tables
+- `BitboardIterator` for efficient bit iteration
+
+### Alpha-Beta Teacher Search
+
+The `chessmoe::search::AlphaBetaSearcher` provides:
+
+- Fail-soft negamax with alpha-beta pruning
+- Iterative deepening
+- Transposition table using Zobrist hash
+- Move ordering: TT move, captures, killer moves, history heuristic
+- Quiescence search for captures/promotions
+- Principal variation tracking
+
+## Full-Cycle Pipeline
+
+The full training cycle includes:
+
+1. Self-play generation (material/pesto/neural)
+2. Replay indexing and validation
+3. Training (from replay or teacher targets)
+4. ONNX export
+5. TensorRT engine build (optional)
+6. Neural arena evaluation
+7. Promotion or rejection
+
+### Full-Cycle Command
+
+```powershell
+python tools/chessmoe.py full-cycle \
+    --phase 1 \
+    --hardware-profile gpu_midrange \
+    --quality balanced_generation \
+    --train-config configs/training/dense_bootstrap.json \
+    --checkpoint weights/dense_bootstrap.pt \
+    --onnx-output weights/dense_bootstrap.onnx \
+    --engine-output weights/dense_bootstrap.engine \
+    --candidate weights/candidate.pt \
+    --best weights/best.pt
+```
+
+Flags:
+- `--skip-engine-build`: Skip TensorRT engine build
+- `--skip-promotion`: Skip automatic promotion
+- `--allow-debug`: Allow Debug build for generation
+
+### Promotion
+
+Promotion requires arena results by default:
+
+```powershell
+python tools/chessmoe.py promote --candidate weights/candidate.pt --version 2
+```
+
+Use `--force` to promote without arena evidence.
 
 ## Quick Start
 
@@ -88,6 +206,22 @@ python tools/chessmoe.py bootstrap
 ```
 
 Debug builds require `--allow-debug`. Material evaluator prints a bootstrap-only warning.
+
+### PeSTO Bootstrap
+
+```powershell
+.\build-nmake\bin\Debug\selfplay.exe --config configs\selfplay\bootstrap_pesto.json --allow-debug
+python tools/chessmoe.py bootstrap
+```
+
+PeSTO evaluator uses tapered piece-square tables for stronger initial training data.
+
+### Teacher Target Bootstrap
+
+```powershell
+python tools/teacher/generate_teacher_targets.py --fen-file data/openings/bootstrap_fens.txt --output data/teacher/pesto_ab_targets.jsonl --depth 4
+python tools/chessmoe.py train --config configs/training/dense_teacher_bootstrap.json
+```
 
 ### Neural Self-Play
 
@@ -122,6 +256,7 @@ Config-driven profiles define hardware-specific settings:
 |---------|-----------|------------|-------|--------|-------------|
 | `cpu_bootstrap_debug` | material | 4 | 1 | 8 | Minimal debug |
 | `cpu_bootstrap_fast` | material | 16 | 1 | 32 | Fast bootstrap |
+| `cpu_pesto_bootstrap` | pesto | 16 | 1 | 32 | Strong PeSTO bootstrap |
 | `gpu_low_vram` | tensorrt | 32 | 32 | 64 | 4 GB VRAM |
 | `gpu_midrange` | tensorrt | 96 | 64 | 128 | 6-10 GB VRAM |
 | `gpu_highend` | tensorrt | 128 | 128 | 200 | 12-24 GB VRAM |
@@ -267,3 +402,13 @@ Never overwrite the current best without preserving a versioned history artifact
 - [[docs/phase10_cuda_tensorrt_inference.md]]
 - [[docs/phase13_gpu_selfplay_pipeline.md]]
 - [[docs/phase18_architecture_upgrade.md]]
+
+## CI
+
+GitHub Actions CI runs on Windows and Linux:
+
+- C++ build and tests (all 15 tests)
+- Python tests (all 193 tests)
+- CPU-only, no CUDA/TensorRT required
+
+TensorRT-dependent tests are skipped unless explicitly enabled.

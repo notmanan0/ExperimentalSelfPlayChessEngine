@@ -13,6 +13,7 @@ namespace chessmoe::selfplay {
 
 enum class EvaluatorMode {
   Material,
+  Pesto,
   TensorRT,
   Onnx,
 };

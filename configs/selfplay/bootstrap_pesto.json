@@ -1,0 +1,11 @@
+{
+  "evaluator": "pesto",
+  "games": 256,
+  "concurrent_games": 16,
+  "visits": 32,
+  "max_plies": 160,
+  "write_replay": true,
+  "output_dir": "data/replay/pesto_bootstrap",
+  "model_version": 0,
+  "generator_version": 1
+}

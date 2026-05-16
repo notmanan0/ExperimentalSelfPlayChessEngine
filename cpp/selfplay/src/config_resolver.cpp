@@ -99,6 +99,8 @@ void apply_legacy_config(ResolvedConfig& config,
   if (auto v = get("evaluator")) {
     if (*v == "material") {
       config.evaluator_mode = EvaluatorMode::Material;
+    } else if (*v == "pesto") {
+      config.evaluator_mode = EvaluatorMode::Pesto;
     } else if (*v == "tensorrt") {
       config.evaluator_mode = EvaluatorMode::TensorRT;
     } else if (*v == "onnx") {
@@ -165,6 +167,8 @@ void apply_cli_override(ResolvedConfig& config, std::string_view arg,
   if (key == "evaluator") {
     if (value == "material") {
       config.evaluator_mode = EvaluatorMode::Material;
+    } else if (value == "pesto") {
+      config.evaluator_mode = EvaluatorMode::Pesto;
     } else if (value == "tensorrt") {
       config.evaluator_mode = EvaluatorMode::TensorRT;
     } else if (value == "onnx") {

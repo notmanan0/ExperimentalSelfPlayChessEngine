@@ -1,4 +1,5 @@
 add_library(chessmoe_chess
+  src/bitboard.cpp
   src/board.cpp
   src/fen.cpp
   src/move.cpp

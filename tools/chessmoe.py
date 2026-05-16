@@ -126,7 +126,14 @@ def cmd_arena_neural(args: argparse.Namespace) -> int:
 
 
 def cmd_promote(args: argparse.Namespace) -> int:
-    from chessmoe.models.registry import promote_candidate
+    from chessmoe.models.registry import promote_candidate, ModelRegistry
+    if not args.force:
+        registry = ModelRegistry("weights/registry.json")
+        entry = registry.get_entry(args.version)
+        if entry and entry.arena_result is None:
+            print("ERROR: No arena result found for this candidate.")
+            print("Run arena first, or use --force to promote without arena evidence.")
+            return 1
     copied = promote_candidate(args.candidate, args.version, force=args.force)
     print(f"Promoted: {args.candidate} -> version {args.version}")
     for f in copied:
@@ -288,6 +295,15 @@ def main(argv: list[str] | None = None) -> int:
     full.add_argument("--hardware-profile", required=True)
     full.add_argument("--quality", default="balanced_generation")
     full.add_argument("--engine", default=None)
+    full.add_argument("--train-config", default=None, help="Training config JSON")
+    full.add_argument("--checkpoint", default=None, help="Checkpoint path")
+    full.add_argument("--onnx-output", default=None, help="ONNX output path")
+    full.add_argument("--engine-output", default=None, help="TensorRT engine output")
+    full.add_argument("--arena-config", default=None, help="Arena config JSON")
+    full.add_argument("--candidate", default=None, help="Candidate weights path")
+    full.add_argument("--best", default=None, help="Best weights path")
+    full.add_argument("--skip-engine-build", action="store_true")
+    full.add_argument("--skip-promotion", action="store_true")
     full.add_argument("--allow-debug", action="store_true")
 
     sub.add_parser("status", help="Show run status")

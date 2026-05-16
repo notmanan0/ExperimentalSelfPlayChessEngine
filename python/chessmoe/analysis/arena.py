@@ -77,6 +77,11 @@ class ArenaRunResult:
     results: list[ArenaGameResult]
     summary: ArenaSummary
     decision: PromotionDecision
+    candidate_path: str = ""
+    best_path: str = ""
+    openings: list[str] | None = None
+    search_budget: int = 0
+    forced: bool = False
 
 
 class MatchBackend(Protocol):
